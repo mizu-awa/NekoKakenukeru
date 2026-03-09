@@ -1,0 +1,14 @@
+{
+  "title":         "猫かけぬける",
+  "startSub":      "Enter / Space / ボタン でスタート",
+  "gameOver":      "ゲームオーバー",
+  "gameOverSub":   "スコア: {score}   Enter で再挑戦",
+  "stageClear":    "Stage {stage} クリア!",
+  "stageClearSub": "次は {parts} 部位!  Enter で続ける",
+  "allClear":      "全ステージクリア!",
+  "allClearSub":   "最終スコア: {score}   Enter で最初から",
+  "keyHints":      "{keys} で各部位ジャンプ  |  Space: 全部位ジャンプ",
+  "stageLabel":    "Stage {n}",
+  "scoreLabel":    "Score: {n}",
+  "goal":          "GOAL"
+}

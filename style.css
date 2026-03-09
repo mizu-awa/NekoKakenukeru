@@ -1,0 +1,57 @@
+* { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
+
+body {
+  background: #111;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: 'Courier New', monospace;
+  overflow: hidden;
+}
+
+#gameCanvas {
+  border: 2px solid #334;
+  display: block;
+  max-width: 100vw;
+}
+
+#hud {
+  color: #ccc;
+  font-size: 13px;
+  margin-top: 6px;
+  text-align: center;
+}
+
+#keyHints {
+  color: #666;
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+#mobileButtons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 0 10px;
+}
+
+.jumpBtn {
+  padding: 14px 18px;
+  font-size: 15px;
+  font-weight: bold;
+  border: 3px solid rgba(255,255,255,0.25);
+  border-radius: 10px;
+  cursor: pointer;
+  color: #fff;
+  min-width: 65px;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.06s, opacity 0.06s;
+}
+
+.jumpBtn:active { transform: scale(0.91); opacity: 0.75; }
+.jumpBtn.all-btn { background: #444 !important; min-width: 80px; }

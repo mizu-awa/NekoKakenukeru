@@ -1,0 +1,14 @@
+{
+  "title":         "Neko Kakenukeru",
+  "startSub":      "Press Enter / Space / Button to Start",
+  "gameOver":      "Game Over",
+  "gameOverSub":   "Score: {score}   Press Enter to Retry",
+  "stageClear":    "Stage {stage} Clear!",
+  "stageClearSub": "Next: {parts} parts!  Press Enter to Continue",
+  "allClear":      "All Stages Clear!",
+  "allClearSub":   "Final Score: {score}   Press Enter to Restart",
+  "keyHints":      "{keys}: Jump each part  |  Space: Jump all",
+  "stageLabel":    "Stage {n}",
+  "scoreLabel":    "Score: {n}",
+  "goal":          "GOAL"
+}
