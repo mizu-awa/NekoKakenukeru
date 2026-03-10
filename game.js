@@ -481,32 +481,32 @@ class Game {
     // Obstacles
     this.obstacles.forEach(o => drawObstacle(ctx, o, this.camX));
 
-  // 1. コネクタ（補完された胴体）を先に描画
-  for (let i = 0; i < this.parts.length - 1; i++) {
-    drawConnector(this.ctx, this.parts[i], this.parts[i+1], this.camX);
-  }
-
-  // 2. メインの操作パーツを描画
-  this.parts.forEach((p, i) => {
-    let angle = 0;
-    // 隣のパーツとの位置関係から角度を算出
-    if (i < this.parts.length - 1) {
-      const next = this.parts[i+1];
-      angle = Math.atan2(next.y - p.y, next.worldX - p.worldX);
-    } else if (i > 0) {
-      const prev = this.parts[i-1];
-      angle = Math.atan2(p.y - prev.y, p.worldX - prev.worldX);
+    // 1. コネクタ（補完された胴体）を先に描画
+    for (let i = 0; i < this.parts.length - 1; i++) {
+      drawConnector(this.ctx, this.parts[i], this.parts[i + 1], this.camX);
     }
 
-    drawBodyPart(this.ctx, {
-      screenX: p.worldX - this.camX,
-      y: p.y,
-      color: p.color,
-      label: p.label,
-      isHead: p.isHead,
-      isTail: p.isTail,
-    }, angle);
-  });
+    // 2. メインの操作パーツを描画
+    this.parts.forEach((p, i) => {
+      let angle = 0;
+      // 隣のパーツとの位置関係から角度を算出
+      if (i < this.parts.length - 1) {
+        const next = this.parts[i + 1];
+        angle = Math.atan2(next.y - p.y, next.worldX - p.worldX);
+      } else if (i > 0) {
+        const prev = this.parts[i - 1];
+        angle = Math.atan2(p.y - prev.y, p.worldX - prev.worldX);
+      }
+
+      drawBodyPart(this.ctx, {
+        screenX: p.worldX - this.camX,
+        y: p.y,
+        color: p.color,
+        label: p.label,
+        isHead: p.isHead,
+        isTail: p.isTail,
+      }, angle);
+    });
 
     // Progress bar
     const prog = Math.min(this.distance / this.stageLen, 1);
