@@ -515,7 +515,7 @@ class Game {
 
     // 2. メインの操作パーツを描画
     this.parts.forEach((p, i) => {
-      if (p.isHead || p.isTail) {
+      //if (p.isHead || p.isTail) {
         drawBodyPart(ctx, {
           screenX: p.worldX - this.camX,
           y: p.y,
@@ -524,11 +524,11 @@ class Game {
           isHead: p.isHead,
           isTail: p.isTail,
         }, angles[i]);
-      } else {
+      /*} else {
         // 胴体はラベルのみ
         ctx.fillStyle = 'white';
         ctx.fillText(p.label, p.worldX - this.camX, p.y + PART_H / 2 + 5);
-      }
+      }*/
     });
 
     // Progress bar
