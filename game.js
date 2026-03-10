@@ -60,26 +60,68 @@ function roundRectPath(ctx, x, y, w, h, r) {
  */
 
 /**
- * ベジェ曲線上の点と、その点における接線の角度を計算する
+ * Catmull-Rom スプライン: 制御点列を通る滑らかな曲線を生成する。
+ * 返り値: { x, y, angle }[] （等パラメータサンプル）
+ *
+ * @param {{ x:number, y:number }[]} pts  制御点（2点以上）
+ * @param {number} totalSamples  全体のサンプル数
  */
-function getBezierData(t, p0, p1, p2, p3) {
-  const cx = 3 * (p1.x - p0.x);
-  const bx = 3 * (p2.x - p1.x) - cx;
-  const ax = p3.x - p0.x - cx - bx;
+function sampleCatmullRom(pts, totalSamples) {
+  if (pts.length < 2) return pts.map(p => ({ ...p, angle: 0 }));
 
-  const cy = 3 * (p1.y - p0.y);
-  const by = 3 * (p2.y - p1.y) - cy;
-  const ay = p3.y - p0.y - cy - by;
+  // 端点用のファントムポイントを追加（反射）
+  const ext = [
+    { x: 2 * pts[0].x - pts[1].x, y: 2 * pts[0].y - pts[1].y },
+    ...pts,
+    { x: 2 * pts[pts.length - 1].x - pts[pts.length - 2].x,
+      y: 2 * pts[pts.length - 1].y - pts[pts.length - 2].y },
+  ];
 
-  const x = ax * t ** 3 + bx * t ** 2 + cx * t + p0.x;
-  const y = ay * t ** 3 + by * t ** 2 + cy * t + p0.y;
+  const segments = pts.length - 1;
+  const result = [];
 
-  // 接線（微分）から角度を算出
-  const dx = 3 * ax * t ** 2 + 2 * bx * t + cx;
-  const dy = 3 * ay * t ** 2 + 2 * by * t + cy;
-  const angle = Math.atan2(dy, dx);
+  for (let seg = 0; seg < segments; seg++) {
+    const p0 = ext[seg];
+    const p1 = ext[seg + 1];
+    const p2 = ext[seg + 2];
+    const p3 = ext[seg + 3];
 
-  return { x, y, angle };
+    const samplesInSeg = (seg === segments - 1)
+      ? Math.ceil(totalSamples / segments)
+      : Math.floor(totalSamples / segments);
+
+    for (let i = 0; i < samplesInSeg; i++) {
+      const t = i / samplesInSeg;
+      const t2 = t * t;
+      const t3 = t2 * t;
+
+      const x = 0.5 * ((2 * p1.x) +
+        (-p0.x + p2.x) * t +
+        (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
+        (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
+      const y = 0.5 * ((2 * p1.y) +
+        (-p0.y + p2.y) * t +
+        (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
+        (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
+
+      // 接線（微分）
+      const dx = 0.5 * ((-p0.x + p2.x) +
+        (4 * p0.x - 10 * p1.x + 8 * p2.x - 2 * p3.x) * t +
+        (-3 * p0.x + 9 * p1.x - 9 * p2.x + 3 * p3.x) * t2);
+      const dy = 0.5 * ((-p0.y + p2.y) +
+        (4 * p0.y - 10 * p1.y + 8 * p2.y - 2 * p3.y) * t +
+        (-3 * p0.y + 9 * p1.y - 9 * p2.y + 3 * p3.y) * t2);
+
+      result.push({ x, y, angle: Math.atan2(dy, dx) });
+    }
+  }
+
+  // 最終点を追加
+  const last = pts[pts.length - 1];
+  const prev = pts[pts.length - 2];
+  result.push({ x: last.x, y: last.y, angle: Math.atan2(last.y - prev.y, last.x - prev.x) });
+
+  return result;
 }
 
 /**
@@ -121,51 +163,48 @@ function drawBodyPart(ctx, part, angle = 0) {
 }
 
 /**
- * パーツ間を「胴体画像」で埋め尽くす（タイリング補完）
+ * スプラインに沿ってねこ全身を描画する。
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {BodyPart[]} parts   全パーツ（tail=0 … head=N-1）
+ * @param {number} camX
  */
-function drawConnector(ctx, a, b, camX, angleA, angleB) {
-  const halfW = PART_W / 2;
-  const centerY_A = a.y + PART_H / 2;
-  const centerY_B = b.y + PART_H / 2;
+function drawCatBody(ctx, parts, camX) {
+  // 制御点: 各パーツの中心（スクリーン座標）
+  const controlPts = parts.map(p => ({
+    x: p.worldX - camX,
+    y: p.y + PART_H / 2,
+  }));
 
-  // aの右端（しっぽ側のパーツなら前方の接続点）
-  const p0 = {
-    x: (a.worldX - camX) + halfW * Math.cos(angleA),
-    y: centerY_A + halfW * Math.sin(angleA)
-  };
+  // スプライン上のサンプル数（パーツ間ごとに十分な密度）
+  const samplesPerSeg = Math.max(3, Math.ceil(PART_GAP / (PART_W * 0.45)));
+  const totalSamples = samplesPerSeg * (parts.length - 1);
+  const samples = sampleCatmullRom(controlPts, totalSamples);
 
-  // bの左端（頭側のパーツなら後方の接続点）
-  const p3 = {
-    x: (b.worldX - camX) - halfW * Math.cos(angleB),
-    y: centerY_B - halfW * Math.sin(angleB)
-  };
+  // --- 胴体タイルを描画 ---
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    const isFirst = (i === 0);
+    const isLast  = (i === samples.length - 1);
 
-  // 制御点：それぞれの角度の方向に少し伸ばすと、より「しなり」が綺麗に出ます
-  const handleLen = (p3.x - p0.x) * 0.8;
-  const p1 = {
-    x: p0.x + handleLen * Math.cos(angleA),
-    y: p0.y + handleLen * Math.sin(angleA)
-  };
-  const p2 = {
-    x: p3.x - handleLen * Math.cos(angleB),
-    y: p3.y - handleLen * Math.sin(angleB)
-  };
-
-  // 描画ループ
-  const dist = Math.sqrt((p3.x - p0.x)**2 + (p3.y - p0.y)**2);
-  const segments = Math.max(2, Math.floor(dist / (PART_W * 0.5)));
-
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
-    const { x, y, angle } = getBezierData(t, p0, p1, p2, p3);
-    
     drawBodyPart(ctx, {
-      screenX: x,
-      y: y - PART_H / 2,
-      color: a.color,
-      isHead: false,
-      isTail: false
-    }, angle);
+      screenX: s.x,
+      y: s.y - PART_H / 2,
+      color: parts[0].color,
+      label: null,
+      isHead: isLast,
+      isTail: isFirst,
+    }, s.angle);
+  }
+
+  // --- 操作パーツのラベルを描画（制御点位置に） ---
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const p of parts) {
+    const sx = p.worldX - camX;
+    ctx.fillText(p.label, sx, p.y + PART_H / 2 + 4);
   }
 }
 
@@ -497,39 +536,8 @@ class Game {
     // Obstacles
     this.obstacles.forEach(o => drawObstacle(ctx, o, this.camX));
 
-    // 各パーツの現在の角度をリスト化しておく
-    const angles = this.parts.map((p, i) => {
-      if (i < this.parts.length - 1) {
-        const next = this.parts[i + 1];
-        return Math.atan2(next.y - p.y, next.worldX - p.worldX);
-      } else {
-        const prev = this.parts[i - 1];
-        return Math.atan2(p.y - prev.y, p.worldX - prev.worldX);
-      }
-    });
-
-    // 1. コネクタ（補完された胴体）を先に描画
-    for (let i = 0; i < this.parts.length - 1; i++) {
-      drawConnector(ctx, this.parts[i], this.parts[i + 1], this.camX, angles[i], angles[i+1]);
-    }
-
-    // 2. メインの操作パーツを描画
-    this.parts.forEach((p, i) => {
-      //if (p.isHead || p.isTail) {
-        drawBodyPart(ctx, {
-          screenX: p.worldX - this.camX,
-          y: p.y,
-          color: p.color,
-          label: p.label,
-          isHead: p.isHead,
-          isTail: p.isTail,
-        }, angles[i]);
-      /*} else {
-        // 胴体はラベルのみ
-        ctx.fillStyle = 'white';
-        ctx.fillText(p.label, p.worldX - this.camX, p.y + PART_H / 2 + 5);
-      }*/
-    });
+    // スプラインベースでねこ全身を描画
+    drawCatBody(ctx, this.parts, this.camX);
 
     // Progress bar
     const prog = Math.min(this.distance / this.stageLen, 1);
