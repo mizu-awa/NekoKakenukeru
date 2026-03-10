@@ -3,7 +3,7 @@
   "CANVAS_H": 400,
   "GROUND_Y": 340,
   "GRAVITY": 0.15,
-  "JUMP_V": -13,
+  "JUMP_V": -10,
   "PART_W": 38,
   "PART_H": 38,
   "PART_GAP": 52,
@@ -29,7 +29,7 @@
     },
     {
       "numParts": 4,
-      "speed": 2.4,
+      "speed": 1.5,
       "length": 4200,
       "obstacles": [
         { "x":  650, "y": 280, "w":  28, "h": 60 },

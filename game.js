@@ -58,66 +58,99 @@ function roundRectPath(ctx, x, y, w, h, r) {
  * @param {CanvasRenderingContext2D} ctx
  * @param {{ screenX:number, y:number, color:string, label:string, isHead:boolean, isTail:boolean }} part
  */
-function drawBodyPart(ctx, part) {
+
+/**
+ * ベジェ曲線上の点と、その点における接線の角度を計算する
+ */
+function getBezierData(t, p0, p1, p2, p3) {
+  const cx = 3 * (p1.x - p0.x);
+  const bx = 3 * (p2.x - p1.x) - cx;
+  const ax = p3.x - p0.x - cx - bx;
+
+  const cy = 3 * (p1.y - p0.y);
+  const by = 3 * (p2.y - p1.y) - cy;
+  const ay = p3.y - p0.y - cy - by;
+
+  const x = ax * t ** 3 + bx * t ** 2 + cx * t + p0.x;
+  const y = ay * t ** 3 + by * t ** 2 + cy * t + p0.y;
+
+  // 接線（微分）から角度を算出
+  const dx = 3 * ax * t ** 2 + 2 * bx * t + cx;
+  const dy = 3 * ay * t ** 2 + 2 * by * t + cy;
+  const angle = Math.atan2(dy, dx);
+
+  return { x, y, angle };
+}
+
+/**
+ * 個別のパーツを描画する（回転対応版）
+ */
+function drawBodyPart(ctx, part, angle = 0) {
   const { screenX: sx, y, color, label, isHead, isTail } = part;
-  const x0 = sx - PART_W / 2;
+  
   ctx.save();
+  ctx.translate(sx, y + PART_H / 2); // パーツの中心を原点に
+  ctx.rotate(angle);
 
-  // Ground shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.28)';
-  ctx.beginPath();
-  ctx.ellipse(sx + 2, GROUND_Y + 3, PART_W / 2 + 2, 5, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Pick sprite
+  // 地面の影（回転させない方が自然なので、必要ならtranslate前に描画）
+  
   const spriteKey = isHead ? 'head' : (isTail ? 'tail' : 'body');
   const img = SPRITES[spriteKey];
 
   if (img) {
-    // Draw image scaled to part size
-    ctx.drawImage(img, x0, y, PART_W, PART_H);
+    ctx.drawImage(img, -PART_W / 2, -PART_H / 2, PART_W, PART_H);
   } else {
-    // Fallback: colored block
-    roundRectPath(ctx, x0, y, PART_W, PART_H, 7);
+    // Fallback: 枠線付きブロック
+    roundRectPath(ctx, -PART_W / 2, -PART_H / 2, PART_W, PART_H, 7);
     ctx.fillStyle = color;
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
     ctx.stroke();
   }
 
-  // Key label
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.font = 'bold 13px monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(label, sx, y + PART_H / 2 + 2);
-
+  // ラベル描画
+  if (label) {
+    ctx.rotate(-angle); // テキストは水平に
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, 0, 4);
+  }
+  
   ctx.restore();
 }
 
 /**
- * Draw the spine connector between two adjacent body parts.
- * Replace to use a different visual (rope, tendon, etc.).
+ * パーツ間を「胴体画像」で埋め尽くす（タイリング補完）
  */
-function drawConnector(ctx, x1, y1, x2, y2) {
-  ctx.save();
-  const mx = (x1 + x2) / 2;
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.bezierCurveTo(mx, y1, mx, y2, x2, y2);
-  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-  ctx.lineWidth = 4;
-  ctx.lineCap = 'round';
-  ctx.stroke();
-  // Inner highlight
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.bezierCurveTo(mx, y1, mx, y2, x2, y2);
-  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.restore();
+function drawConnector(ctx, a, b, camX) {
+  const p0 = { x: a.worldX - camX, y: a.y + PART_H / 2 };
+  const p3 = { x: b.worldX - camX, y: b.y + PART_H / 2 };
+  
+  // 制御点：水平方向にオフセットをつけて「しなり」を作る
+  const offset = (p3.x - p0.x) * 0.5;
+  const p1 = { x: p0.x + offset, y: p0.y };
+  const p2 = { x: p3.x - offset, y: p3.y };
+
+  // 2点間の直線距離に基づいて、描画するステップ数を決める
+  // 密度（PART_Wの何割で重ねるか）を調整
+  const dist = Math.sqrt((p3.x - p0.x)**2 + (p3.y - p0.y)**2);
+  const stepSize = PART_W * 0.6; // 0.6にすると少し重なって密度が上がる
+  const segments = Math.max(1, Math.floor(dist / stepSize));
+
+  for (let i = 1; i < segments; i++) {
+    const t = i / segments;
+    const { x, y, angle } = getBezierData(t, p0, p1, p2, p3);
+    
+    // 補完用の胴体を描画
+    drawBodyPart(ctx, {
+      screenX: x,
+      y: y - PART_H / 2,
+      color: a.color,
+      isHead: false,
+      isTail: false
+    }, angle);
+  }
 }
 
 /**
@@ -448,28 +481,32 @@ class Game {
     // Obstacles
     this.obstacles.forEach(o => drawObstacle(ctx, o, this.camX));
 
-    // Spine connectors (drawn behind body parts)
-    for (let i = 0; i < this.parts.length - 1; i++) {
-      const a  = this.parts[i];
-      const b  = this.parts[i + 1];
-      drawConnector(
-        ctx,
-        a.worldX - this.camX, a.y + PART_H / 2,
-        b.worldX - this.camX, b.y + PART_H / 2
-      );
+  // 1. コネクタ（補完された胴体）を先に描画
+  for (let i = 0; i < this.parts.length - 1; i++) {
+    drawConnector(this.ctx, this.parts[i], this.parts[i+1], this.camX);
+  }
+
+  // 2. メインの操作パーツを描画
+  this.parts.forEach((p, i) => {
+    let angle = 0;
+    // 隣のパーツとの位置関係から角度を算出
+    if (i < this.parts.length - 1) {
+      const next = this.parts[i+1];
+      angle = Math.atan2(next.y - p.y, next.worldX - p.worldX);
+    } else if (i > 0) {
+      const prev = this.parts[i-1];
+      angle = Math.atan2(p.y - prev.y, p.worldX - prev.worldX);
     }
 
-    // Body parts
-    this.parts.forEach(p => {
-      drawBodyPart(ctx, {
-        screenX: p.worldX - this.camX,
-        y:       p.y,
-        color:   p.color,
-        label:   p.label,
-        isHead:  p.isHead,
-        isTail:  p.isTail,
-      });
-    });
+    drawBodyPart(this.ctx, {
+      screenX: p.worldX - this.camX,
+      y: p.y,
+      color: p.color,
+      label: p.label,
+      isHead: p.isHead,
+      isTail: p.isTail,
+    }, angle);
+  });
 
     // Progress bar
     const prog = Math.min(this.distance / this.stageLen, 1);
