@@ -123,26 +123,42 @@ function drawBodyPart(ctx, part, angle = 0) {
 /**
  * パーツ間を「胴体画像」で埋め尽くす（タイリング補完）
  */
-function drawConnector(ctx, a, b, camX) {
-  const p0 = { x: a.worldX - camX, y: a.y + PART_H / 2 };
-  const p3 = { x: b.worldX - camX, y: b.y + PART_H / 2 };
-  
-  // 制御点：水平方向にオフセットをつけて「しなり」を作る
-  const offset = (p3.x - p0.x) * 0.5;
-  const p1 = { x: p0.x + offset, y: p0.y };
-  const p2 = { x: p3.x - offset, y: p3.y };
+function drawConnector(ctx, a, b, camX, angleA, angleB) {
+  const halfW = PART_W / 2;
+  const centerY_A = a.y + PART_H / 2;
+  const centerY_B = b.y + PART_H / 2;
 
-  // 2点間の直線距離に基づいて、描画するステップ数を決める
-  // 密度（PART_Wの何割で重ねるか）を調整
+  // aの右端（しっぽ側のパーツなら前方の接続点）
+  const p0 = {
+    x: (a.worldX - camX) + halfW * Math.cos(angleA),
+    y: centerY_A + halfW * Math.sin(angleA)
+  };
+
+  // bの左端（頭側のパーツなら後方の接続点）
+  const p3 = {
+    x: (b.worldX - camX) - halfW * Math.cos(angleB),
+    y: centerY_B - halfW * Math.sin(angleB)
+  };
+
+  // 制御点：それぞれの角度の方向に少し伸ばすと、より「しなり」が綺麗に出ます
+  const handleLen = (p3.x - p0.x) * 0.8;
+  const p1 = {
+    x: p0.x + handleLen * Math.cos(angleA),
+    y: p0.y + handleLen * Math.sin(angleA)
+  };
+  const p2 = {
+    x: p3.x - handleLen * Math.cos(angleB),
+    y: p3.y - handleLen * Math.sin(angleB)
+  };
+
+  // 描画ループ
   const dist = Math.sqrt((p3.x - p0.x)**2 + (p3.y - p0.y)**2);
-  const stepSize = PART_W * 0.6; // 0.6にすると少し重なって密度が上がる
-  const segments = Math.max(1, Math.floor(dist / stepSize));
+  const segments = Math.max(2, Math.floor(dist / (PART_W * 0.5)));
 
-  for (let i = 1; i < segments; i++) {
+  for (let i = 0; i <= segments; i++) {
     const t = i / segments;
     const { x, y, angle } = getBezierData(t, p0, p1, p2, p3);
     
-    // 補完用の胴体を描画
     drawBodyPart(ctx, {
       screenX: x,
       y: y - PART_H / 2,
@@ -481,31 +497,38 @@ class Game {
     // Obstacles
     this.obstacles.forEach(o => drawObstacle(ctx, o, this.camX));
 
+    // 各パーツの現在の角度をリスト化しておく
+    const angles = this.parts.map((p, i) => {
+      if (i < this.parts.length - 1) {
+        const next = this.parts[i + 1];
+        return Math.atan2(next.y - p.y, next.worldX - p.worldX);
+      } else {
+        const prev = this.parts[i - 1];
+        return Math.atan2(p.y - prev.y, p.worldX - prev.worldX);
+      }
+    });
+
     // 1. コネクタ（補完された胴体）を先に描画
     for (let i = 0; i < this.parts.length - 1; i++) {
-      drawConnector(this.ctx, this.parts[i], this.parts[i + 1], this.camX);
+      drawConnector(ctx, this.parts[i], this.parts[i + 1], this.camX, angles[i], angles[i+1]);
     }
 
     // 2. メインの操作パーツを描画
     this.parts.forEach((p, i) => {
-      let angle = 0;
-      // 隣のパーツとの位置関係から角度を算出
-      if (i < this.parts.length - 1) {
-        const next = this.parts[i + 1];
-        angle = Math.atan2(next.y - p.y, next.worldX - p.worldX);
-      } else if (i > 0) {
-        const prev = this.parts[i - 1];
-        angle = Math.atan2(p.y - prev.y, p.worldX - prev.worldX);
+      if (p.isHead || p.isTail) {
+        drawBodyPart(ctx, {
+          screenX: p.worldX - this.camX,
+          y: p.y,
+          color: p.color,
+          label: p.label,
+          isHead: p.isHead,
+          isTail: p.isTail,
+        }, angles[i]);
+      } else {
+        // 胴体はラベルのみ
+        ctx.fillStyle = 'white';
+        ctx.fillText(p.label, p.worldX - this.camX, p.y + PART_H / 2 + 5);
       }
-
-      drawBodyPart(this.ctx, {
-        screenX: p.worldX - this.camX,
-        y: p.y,
-        color: p.color,
-        label: p.label,
-        isHead: p.isHead,
-        isTail: p.isTail,
-      }, angle);
     });
 
     // Progress bar
