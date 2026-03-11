@@ -173,7 +173,8 @@ function drawBodyPart(ctx, part, angle = 0) {
     : SPRITES[spriteKey];
 
   if (img) {
-    ctx.drawImage(img, -PART_W / 2, -PART_H / 2, PART_W, PART_H);
+    const drawOffsetX = isTail ? 2 : 0;
+    ctx.drawImage(img, -PART_W / 2 + drawOffsetX, -PART_H / 2, PART_W, PART_H);
   } else {
     // Fallback: 枠線付きブロック
     roundRectPath(ctx, -PART_W / 2, -PART_H / 2, PART_W, PART_H, 7);
@@ -316,14 +317,27 @@ function drawCatBody(ctx, parts, camX) {
     ctx.restore();
   }
 
-  // --- 操作パーツのラベルを描画（制御点位置に） ---
-  ctx.fillStyle = 'white';
+  // --- 操作パーツのラベルを描画（猫の上に浮かせる） ---
   ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (const p of parts) {
     const sx = p.worldX - camX;
-    ctx.fillText(p.label, sx, p.y + PART_H / 2 + 4);
+    const labelY = p.y - 14; // 猫の上方に浮かせる
+
+    // 背景（丸角矩形）
+    const tw = ctx.measureText(p.label).width;
+    const padX = 5, padY = 3;
+    const bx = sx - tw / 2 - padX;
+    const by = labelY - 8 - padY;
+    const bw = tw + padX * 2;
+    const bh = 16 + padY * 2;
+    roundRectPath(ctx, bx, by, bw, bh, 5);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fill();
+
+    ctx.fillStyle = 'white';
+    ctx.fillText(p.label, sx, labelY);
   }
 }
 
@@ -374,26 +388,40 @@ function drawObstacle(ctx, obs, camX) {
   ctx.restore();
 }
 
+/** Simple mountain height: |sin| gives sharp valleys and round peaks. */
+function _mtHeight(wx, seed, amp, freq) {
+  return Math.abs(Math.sin(wx * freq + seed)) * amp;
+}
+
+/** Draw one mountain silhouette layer with parallax. */
+function drawMountainLayer(ctx, camX, parallax, baseY, color, amp, freq) {
+  const ox   = camX * parallax;
+  const seed = parallax * 17;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND_Y);
+  for (let sx = 0; sx <= CANVAS_W; sx += 4) {
+    ctx.lineTo(sx, baseY - _mtHeight(sx + ox, seed, amp, freq));
+  }
+  ctx.lineTo(CANVAS_W, GROUND_Y);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+}
+
 /** Draw the scrolling sky background. */
 function drawBackground(ctx, camX) {
   const grad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
-  grad.addColorStop(0, '#080c1e');
-  grad.addColorStop(1, '#1a2050');
+  grad.addColorStop(0, '#4a90d9');
+  grad.addColorStop(1, '#a8d8f0');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, CANVAS_W, GROUND_Y);
 
-  // Parallax stars
-  ctx.fillStyle = '#fff';
-  for (let i = 0; i < 65; i++) {
-    const x = ((i * 139 - camX * 0.15) % CANVAS_W + CANVAS_W) % CANVAS_W;
-    const y = (i * 71 + 17) % (GROUND_Y - 50);
-    const r = (i % 4 === 0) ? 1.5 : 1;
-    ctx.globalAlpha = 0.35 + (i % 6) * 0.1;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
+  // Mountain ranges (far → near)
+  drawMountainLayer(ctx, camX, 0.04, GROUND_Y * 0.65, '#7aabcc', 55, 0.006);
+  drawMountainLayer(ctx, camX, 0.11, GROUND_Y * 0.75, '#5a8fb0', 50, 0.009);
+  drawMountainLayer(ctx, camX, 0.22, GROUND_Y * 0.85, '#3d6e8a', 42, 0.013);
 }
 
 /** Draw the ground plane with a glowing edge and tile grid. */
