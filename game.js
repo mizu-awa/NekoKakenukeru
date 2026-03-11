@@ -398,6 +398,9 @@ function drawMountainLayer(ctx, camX, parallax, baseY, color, amp, freq) {
   const ox   = camX * parallax;
   const seed = parallax * 17;
   ctx.save();
+  ctx.fillStyle = color;
+
+  // Mountain silhouette
   ctx.beginPath();
   ctx.moveTo(0, GROUND_Y);
   for (let sx = 0; sx <= CANVAS_W; sx += 4) {
@@ -405,8 +408,49 @@ function drawMountainLayer(ctx, camX, parallax, baseY, color, amp, freq) {
   }
   ctx.lineTo(CANVAS_W, GROUND_Y);
   ctx.closePath();
-  ctx.fillStyle = color;
   ctx.fill();
+
+  // Cat ears on every 5th peak.
+  // |sin(wx*freq + seed)| peaks at wx = (π/2 + n*π - seed) / freq
+  const nMin = Math.ceil(((ox - 60) * freq + seed - Math.PI / 2) / Math.PI);
+  const nMax = Math.floor(((ox + CANVAS_W + 60) * freq + seed - Math.PI / 2) / Math.PI);
+  const ew = amp * 0.36;  // ear base half-width
+  const eh = amp * 0.34;  // ear height (lower = gentler)
+  const gap = amp * 0.22; // gap between ears
+  for (let n = nMin; n <= nMax; n++) {
+    if (((n % 5) + 5) % 5 !== 0) continue;
+    const wxPeak = (Math.PI / 2 + n * Math.PI - seed) / freq;
+    const px = wxPeak - ox;
+    const py = baseY - amp;
+    const base = py + ew * 0.3; // ear base y (slightly below peak)
+
+    // Left ear – quadratic bezier sides to round the tip
+    const lOuter = px - gap - ew * 2;
+    const lInner = px - gap;
+    const lTipX  = px - gap - ew;
+    const lTipY  = py - eh;
+    ctx.beginPath();
+    ctx.moveTo(lOuter, base);
+    ctx.lineTo(lInner, base);
+    ctx.quadraticCurveTo(lInner  - ew * 0.3, base - eh * 0.55, lTipX, lTipY);
+    ctx.quadraticCurveTo(lOuter  + ew * 0.3, base - eh * 0.55, lOuter, base);
+    ctx.closePath();
+    ctx.fill();
+
+    // Right ear
+    const rInner = px + gap;
+    const rOuter = px + gap + ew * 2;
+    const rTipX  = px + gap + ew;
+    const rTipY  = py - eh;
+    ctx.beginPath();
+    ctx.moveTo(rInner, base);
+    ctx.lineTo(rOuter, base);
+    ctx.quadraticCurveTo(rOuter  - ew * 0.3, base - eh * 0.55, rTipX, rTipY);
+    ctx.quadraticCurveTo(rInner  + ew * 0.3, base - eh * 0.55, rInner, base);
+    ctx.closePath();
+    ctx.fill();
+  }
+
   ctx.restore();
 }
 
