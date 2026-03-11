@@ -20,7 +20,7 @@ function t(key, vars = {}) {
 // ================================================================
 //  SPRITE IMAGES
 // ================================================================
-const SPRITES = { head: null, body: null, tail: null };
+const SPRITES = { head: null, body: null, tail: null, bodyFeathered: null };
 
 function loadSprites() {
   return Promise.all(['head', 'body', 'tail'].map(key => new Promise(resolve => {
@@ -29,6 +29,36 @@ function loadSprites() {
     img.onerror = () => resolve();   // fallback: stay null → use block
     img.src = `./img/${key}.png`;
   })));
+}
+
+/**
+ * body スプライトの左右端にアルファグラデーションをかけたオフスクリーン版を生成する。
+ * PART_W / PART_H が確定した後に呼ぶこと。
+ */
+function createFeatheredBodySprite() {
+  if (!SPRITES.body) return;
+  const oc = document.createElement('canvas');
+  oc.width  = PART_W;
+  oc.height = PART_H;
+  const c = oc.getContext('2d');
+
+  // 元画像を描画
+  c.drawImage(SPRITES.body, 0, 0, PART_W, PART_H);
+
+  // 左右 28% をフェードさせるグラデーションマスク
+  const fadeW = PART_W * 0.28;
+  const grad = c.createLinearGradient(0, 0, PART_W, 0);
+  grad.addColorStop(0,               'rgba(0,0,0,0)');
+  grad.addColorStop(fadeW / PART_W,  'rgba(0,0,0,1)');
+  grad.addColorStop(1 - fadeW / PART_W, 'rgba(0,0,0,1)');
+  grad.addColorStop(1,               'rgba(0,0,0,0)');
+
+  // destination-in: グラデーションのアルファで画像アルファを切り抜く
+  c.globalCompositeOperation = 'destination-in';
+  c.fillStyle = grad;
+  c.fillRect(0, 0, PART_W, PART_H);
+
+  SPRITES.bodyFeathered = oc;
 }
 
 // ================================================================
@@ -137,7 +167,10 @@ function drawBodyPart(ctx, part, angle = 0) {
   // 地面の影（回転させない方が自然なので、必要ならtranslate前に描画）
   
   const spriteKey = isHead ? 'head' : (isTail ? 'tail' : 'body');
-  const img = SPRITES[spriteKey];
+  // 胴体（head/tail 以外）はフェザリング済み画像を優先使用
+  const img = (!isHead && !isTail && SPRITES.bodyFeathered)
+    ? SPRITES.bodyFeathered
+    : SPRITES[spriteKey];
 
   if (img) {
     ctx.drawImage(img, -PART_W / 2, -PART_H / 2, PART_W, PART_H);
@@ -181,6 +214,28 @@ function drawCatBody(ctx, parts, camX) {
   const totalSamples = samplesPerSeg * (parts.length - 1);
   const samples = sampleCatmullRom(controlPts, totalSamples);
 
+  // --- 白い胴体背景の下塗り（フェザリングのすき間を埋める） ---
+  // body.png の白い帯は画像中心よりやや上にある（上方向 PART_H*0.08 オフセット）
+  // 胴体タイルより先に描くことで、タイル間のすき間を白で埋める
+  if (samples.length >= 2) {
+    const whiteOffset = PART_H * 0.05; // 画像中心から白帯中央までの距離（上向き）
+    ctx.save();
+    ctx.beginPath();
+    for (let i = 0; i < samples.length; i++) {
+      const s = samples[i];
+      const bx = s.x + Math.sin(s.angle) * whiteOffset;
+      const by = s.y - Math.cos(s.angle) * whiteOffset;
+      if (i === 0) ctx.moveTo(bx, by);
+      else         ctx.lineTo(bx, by);
+    }
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth   = PART_H * 0.35; // 画像内の白い帯の高さに近似
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // --- 胴体タイルを描画 ---
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i];
@@ -195,6 +250,70 @@ function drawCatBody(ctx, parts, camX) {
       isHead: isLast,
       isTail: isFirst,
     }, s.angle);
+  }
+
+  // --- 背中ライン（白＋黒） ---
+  // 胴体セグメントの "上端" は画像中心から法線方向にオフセット
+  if (samples.length >= 2) {
+    const backOffset = PART_H * 0.20;
+    const lineExtendPx = 8; // 両端を延長するpx数
+
+    // 白ライン（背中ラインの下側、胴体画像との隙間を埋める）
+    const whiteBackOffset = backOffset - PART_H * 0.04;
+    ctx.save();
+    ctx.beginPath();
+    {
+      const s0 = samples[0];
+      const bx0 = s0.x + Math.sin(s0.angle) * whiteBackOffset - Math.cos(s0.angle) * lineExtendPx;
+      const by0 = s0.y - Math.cos(s0.angle) * whiteBackOffset - Math.sin(s0.angle) * lineExtendPx;
+      ctx.moveTo(bx0, by0);
+    }
+    for (let i = 0; i < samples.length - 2; i++) {
+      const s = samples[i];
+      const bx = s.x + Math.sin(s.angle) * whiteBackOffset;
+      const by = s.y - Math.cos(s.angle) * whiteBackOffset;
+      ctx.lineTo(bx, by);
+    }
+    {
+      const sN = samples[samples.length - 2];
+      const bxN = sN.x + Math.sin(sN.angle) * whiteBackOffset + Math.cos(sN.angle) * lineExtendPx;
+      const byN = sN.y - Math.cos(sN.angle) * whiteBackOffset + Math.sin(sN.angle) * lineExtendPx;
+      ctx.lineTo(bxN, byN);
+    }
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth   = 6;
+    ctx.lineCap     = 'butt';
+    ctx.lineJoin    = 'round';
+    ctx.stroke();
+    ctx.restore();
+
+    // 黒ライン（背中の輪郭）
+    ctx.save();
+    ctx.beginPath();
+    {
+      const s0 = samples[0];
+      const bx0 = s0.x + Math.sin(s0.angle) * backOffset - Math.cos(s0.angle) * lineExtendPx;
+      const by0 = s0.y - Math.cos(s0.angle) * backOffset - Math.sin(s0.angle) * lineExtendPx;
+      ctx.moveTo(bx0, by0);
+    }
+    for (let i = 0; i < samples.length - 2; i++) {
+      const s = samples[i];
+      const bx = s.x + Math.sin(s.angle) * backOffset;
+      const by = s.y - Math.cos(s.angle) * backOffset;
+      ctx.lineTo(bx, by);
+    }
+    {
+      const sN = samples[samples.length - 2];
+      const bxN = sN.x + Math.sin(sN.angle) * backOffset + Math.cos(sN.angle) * lineExtendPx;
+      const byN = sN.y - Math.cos(sN.angle) * backOffset + Math.sin(sN.angle) * lineExtendPx;
+      ctx.lineTo(bxN, byN);
+    }
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth   = 3;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+    ctx.stroke();
+    ctx.restore();
   }
 
   // --- 操作パーツのラベルを描画（制御点位置に） ---
@@ -626,6 +745,9 @@ async function main() {
   PART_LABELS = cfg.PART_LABELS;
   PART_COLORS = cfg.PART_COLORS;
   STAGES      = cfg.STAGES;
+
+  // PART_W/PART_H 確定後にフェザリングスプライトを生成
+  createFeatheredBodySprite();
 
   new Game();
 
