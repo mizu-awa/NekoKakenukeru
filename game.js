@@ -317,13 +317,13 @@ function drawCatBody(ctx, parts, camX) {
     ctx.restore();
   }
 
-  // --- 操作パーツのラベルを描画（猫の上に浮かせる） ---
+  // --- 操作パーツのラベルを描画（ねこの上に浮かせる） ---
   ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (const p of parts) {
     const sx = p.worldX - camX;
-    const labelY = p.y - 14; // 猫の上方に浮かせる
+    const labelY = p.y - 14; // ねこの上方に浮かせる
 
     // 背景（丸角矩形）
     const tw = ctx.measureText(p.label).width;
@@ -501,7 +501,8 @@ class BodyPart {
     this.index    = index;
     // Part 0 = tail (leftmost on screen). Part N-1 = head (rightmost/front).
     // Key A controls the leftmost block, matching the left-to-right screen order.
-    this.worldX   = 220 - (totalParts - 1 - index) * PART_GAP;
+    const headScreenX = Math.max(220, (totalParts - 1) * PART_GAP + 100);
+    this.worldX   = headScreenX - (totalParts - 1 - index) * PART_GAP;
     this.y        = GROUND_Y - PART_H;
     this.vy       = 0;
     this.onGround = true;
@@ -672,7 +673,6 @@ class Game {
     this.ctx      = this.canvas.getContext('2d');
     this.keys     = new Set();
     this.state    = 'start';   // start | playing | gameover | clear
-    this.score    = 0;
     this.stageIdx = 0;
     this.parts    = [];
     this.obstacles = [];
@@ -720,17 +720,42 @@ class Game {
 
   // ----------------------------------------------------------
   _setupInput() {
+    this.canvas.addEventListener('mousedown', e => {
+      if (this.state !== 'playing') { e.preventDefault(); this._advance(); }
+    });
+    this.canvas.addEventListener('touchstart', e => {
+      if (this.state !== 'playing') { e.preventDefault(); this._advance(); }
+    }, { passive: false });
+
     document.addEventListener('keydown', e => {
       const k = e.key.toLowerCase();
       if (e.key === ' ') e.preventDefault();
       if (!this.keys.has(k)) {
         this.keys.add(k);
         this._onKey(k);
+        this._setButtonActive(k, true);
       }
     });
     document.addEventListener('keyup', e => {
-      this.keys.delete(e.key.toLowerCase());
+      const k = e.key.toLowerCase();
+      this.keys.delete(k);
+      this._setButtonActive(k, false);
     });
+  }
+
+  _setButtonActive(k, active) {
+    if (!this.btnEls) return;
+    if (k === ' ') {
+      this.btnEls.forEach(b => b.classList.toggle('key-active', active));
+      if (this.allBtnEl) this.allBtnEl.classList.toggle('key-active', active);
+      return;
+    }
+    for (let i = 0; i < this.parts.length; i++) {
+      if (k === PART_KEYS[i]) {
+        this.btnEls[i]?.classList.toggle('key-active', active);
+        return;
+      }
+    }
   }
 
   _onKey(k) {
@@ -756,7 +781,6 @@ class Game {
     } else if (this.state === 'clear') {
       const next = this.stageIdx + 1;
       this._loadStage(next < STAGES.length ? next : 0);
-      if (next >= STAGES.length) this.score = 0;
       this.state = 'playing';
     }
   }
@@ -765,11 +789,12 @@ class Game {
   _buildMobileButtons() {
     const container = document.getElementById('mobileButtons');
     container.innerHTML = '';
+    this.btnEls = [];
 
-    this.parts.forEach((part, i) => {
+    this.parts.forEach((part) => {
       const btn        = document.createElement('button');
       btn.className    = 'jumpBtn';
-      btn.textContent  = `${part.label} (${i + 1})`;
+      btn.textContent  = part.label;
       btn.style.background = part.color;
       const fire = e => {
         e.preventDefault();
@@ -779,6 +804,7 @@ class Game {
       btn.addEventListener('touchstart', fire, { passive: false });
       btn.addEventListener('mousedown',  fire);
       container.appendChild(btn);
+      this.btnEls.push(btn);
     });
 
     const allBtn     = document.createElement('button');
@@ -792,11 +818,11 @@ class Game {
     allBtn.addEventListener('touchstart', fireAll, { passive: false });
     allBtn.addEventListener('mousedown',  fireAll);
     container.appendChild(allBtn);
+    this.allBtnEl = allBtn;
   }
 
   _updateHUD() {
     document.getElementById('stageLbl').textContent = t('stageLabel', { n: this.stageIdx + 1 });
-    document.getElementById('scoreLbl').textContent = t('scoreLabel', { n: this.score });
     const keys = PART_KEYS.slice(0, this.parts.length).map(k => k.toUpperCase()).join(' / ');
     document.getElementById('keyHints').textContent = t('keyHints', { keys });
   }
@@ -879,12 +905,11 @@ class Game {
 
     this.parts.forEach(p => p.update(this.speed));
 
-    // Camera: keep head (parts[N-1], rightmost) fixed at 220px from left edge
-    this.camX = this.parts[this.parts.length - 1].worldX - 220;
+    // Camera: keep head fixed so the full cat body is visible
+    const catSpan = (this.parts.length - 1) * PART_GAP;
+    this.camX = this.parts[this.parts.length - 1].worldX - Math.max(220, catSpan + 100);
 
     this.distance += this.speed;
-    this.score     = Math.floor(this.distance);
-    document.getElementById('scoreLbl').textContent = t('scoreLabel', { n: this.score });
 
     if (this._checkCollision()) {
       this.state = 'gameover';
@@ -892,8 +917,7 @@ class Game {
     }
 
     if (this.distance >= this.stageLen) {
-      this.score += 1000 * (this.stageIdx + 1);
-      this.state  = 'clear';
+      this.state = 'clear';
       return;
     }
 
@@ -976,7 +1000,7 @@ class Game {
       sub   = t('startSub');
     } else if (this.state === 'gameover') {
       title = t('gameOver');
-      sub   = t('gameOverSub', { score: this.score });
+      sub   = t('gameOverSub');
     } else if (this.state === 'clear') {
       const next = this.stageIdx + 1;
       if (next < STAGES.length) {
@@ -984,7 +1008,7 @@ class Game {
         sub   = t('stageClearSub', { parts: STAGES[next].numParts });
       } else {
         title = t('allClear');
-        sub   = t('allClearSub', { score: this.score });
+        sub   = t('allClearSub');
       }
     }
 
