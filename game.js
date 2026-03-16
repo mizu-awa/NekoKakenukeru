@@ -803,8 +803,24 @@ class Game {
     const scale = Math.min(maxW / CANVAS_W, maxH / CANVAS_H);
     this.canvas.style.width  = (CANVAS_W * scale) + 'px';
     this.canvas.style.height = (CANVAS_H * scale) + 'px';
-    this.canvas.width  = CANVAS_W;
-    this.canvas.height = CANVAS_H;
+
+    // モバイルでは解像度を半分にして描画負荷を軽減
+    const res = this._isMobile ? 0.5 : 1;
+    this.canvas.width  = CANVAS_W * res;
+    this.canvas.height = CANVAS_H * res;
+
+    if (this._isMobile) {
+      this.ctx.setTransform(res, 0, 0, res, 0, 0);
+    } else {
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
+    // 解像度変更でキャッシュが合わなくなるので再生成
+    _bgCache = null;
+    _groundCache = null;
+    if (_mtCaches) _mtCaches.forEach(l => { l.canvas = null; l.lastOx = -Infinity; });
+    ensureBgCache();
+    ensureGroundCache();
   }
 
   // ----------------------------------------------------------
