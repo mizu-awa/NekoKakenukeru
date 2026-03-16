@@ -204,33 +204,44 @@ function drawBodyPart(ctx, part, angle = 0) {
  * @param {number} camX
  */
 function drawCatBody(ctx, parts, camX) {
-  // 制御点: 各パーツの中心（スクリーン座標）
-  const controlPts = parts.map(p => ({
-    x: p.worldX - camX,
-    y: p.y + PART_H / 2,
-  }));
+  // スプラインキャッシュ: パーツ位置が変わっていなければ再計算しない
+  // サンプルはワールド座標で保存し、描画時に camX を引く
+  const cacheKey = parts.map(p => `${p.worldX | 0},${p.y | 0}`).join(';');
+  let samples;
+  if (_splineCache && _splineCache.key === cacheKey) {
+    samples = _splineCache.samples;
+  } else {
+    const controlPts = parts.map(p => ({
+      x: p.worldX,          // ワールド座標
+      y: p.y + PART_H / 2,
+    }));
+    const samplesPerSeg = Math.max(2, Math.ceil(PART_GAP / (PART_W * 0.6)));
+    const totalSamples = samplesPerSeg * (parts.length - 1);
+    samples = sampleCatmullRom(controlPts, totalSamples);
+    _splineCache = { key: cacheKey, samples };
+  }
 
-  // スプライン上のサンプル数（パーツ間ごとに十分な密度）
-  const samplesPerSeg = Math.max(2, Math.ceil(PART_GAP / (PART_W * 0.6)));
-  const totalSamples = samplesPerSeg * (parts.length - 1);
-  const samples = sampleCatmullRom(controlPts, totalSamples);
+  // 間引きステップ（白帯・背中ライン・タイルで共用）
+  const backStep = Math.max(1, Math.floor(samples.length / (parts.length * 3)));
 
-  // --- 白い胴体背景の下塗り（フェザリングのすき間を埋める） ---
-  // body.png の白い帯は画像中心よりやや上にある（上方向 PART_H*0.08 オフセット）
-  // 胴体タイルより先に描くことで、タイル間のすき間を白で埋める
+  // --- 白い胴体背景の下塗り（間引き） ---
   if (samples.length >= 2) {
-    const whiteOffset = PART_H * 0.05; // 画像中心から白帯中央までの距離（上向き）
+    const whiteOffset = PART_H * 0.05;
     ctx.save();
     ctx.beginPath();
-    for (let i = 0; i < samples.length; i++) {
+    for (let i = 0; i < samples.length; i += backStep) {
       const s = samples[i];
-      const bx = s.x + Math.sin(s.angle) * whiteOffset;
+      const bx = (s.x - camX) + Math.sin(s.angle) * whiteOffset;
       const by = s.y - Math.cos(s.angle) * whiteOffset;
       if (i === 0) ctx.moveTo(bx, by);
       else         ctx.lineTo(bx, by);
     }
+    // 最終点を補完
+    const sLast = samples[samples.length - 1];
+    ctx.lineTo((sLast.x - camX) + Math.sin(sLast.angle) * whiteOffset,
+               sLast.y          - Math.cos(sLast.angle) * whiteOffset);
     ctx.strokeStyle = 'white';
-    ctx.lineWidth   = PART_H * 0.35; // 画像内の白い帯の高さに近似
+    ctx.lineWidth   = PART_H * 0.35;
     ctx.lineCap     = 'round';
     ctx.lineJoin    = 'round';
     ctx.stroke();
@@ -242,7 +253,7 @@ function drawCatBody(ctx, parts, camX) {
   for (let i = 0; i < samples.length; i += step) {
     const s = samples[i];
     drawBodyPart(ctx, {
-      screenX: s.x,
+      screenX: s.x - camX,
       y: s.y - PART_H / 2,
       color: parts[0].color,
       label: null,
@@ -254,7 +265,7 @@ function drawCatBody(ctx, parts, camX) {
   if ((samples.length - 1) % step !== 0) {
     const s = samples[samples.length - 1];
     drawBodyPart(ctx, {
-      screenX: s.x,
+      screenX: s.x - camX,
       y: s.y - PART_H / 2,
       color: parts[0].color,
       label: null,
@@ -264,33 +275,28 @@ function drawCatBody(ctx, parts, camX) {
   }
 
   // --- 背中ライン（白＋黒） ---
-  // 胴体セグメントの "上端" は画像中心から法線方向にオフセット
   if (samples.length >= 2) {
     const backOffset = PART_H * 0.20;
-    const lineExtendPx = 8; // 両端を延長するpx数
+    const lineExtendPx = 8;
 
-    // 背中ラインの間引きステップ（2〜3点おき）
-    const backStep = Math.max(1, Math.floor(samples.length / (parts.length * 3)));
-
-    // 白ライン（背中ラインの下側、胴体画像との隙間を埋める）
+    // 白ライン
     const whiteBackOffset = backOffset - PART_H * 0.04;
     ctx.save();
     ctx.beginPath();
     {
       const s0 = samples[0];
-      const bx0 = s0.x + Math.sin(s0.angle) * whiteBackOffset - Math.cos(s0.angle) * lineExtendPx;
+      const bx0 = (s0.x - camX) + Math.sin(s0.angle) * whiteBackOffset - Math.cos(s0.angle) * lineExtendPx;
       const by0 = s0.y - Math.cos(s0.angle) * whiteBackOffset - Math.sin(s0.angle) * lineExtendPx;
       ctx.moveTo(bx0, by0);
     }
     for (let i = 0; i < samples.length - 2; i += backStep) {
       const s = samples[i];
-      const bx = s.x + Math.sin(s.angle) * whiteBackOffset;
-      const by = s.y - Math.cos(s.angle) * whiteBackOffset;
-      ctx.lineTo(bx, by);
+      ctx.lineTo((s.x - camX) + Math.sin(s.angle) * whiteBackOffset,
+                 s.y          - Math.cos(s.angle) * whiteBackOffset);
     }
     {
       const sN = samples[samples.length - 2];
-      const bxN = sN.x + Math.sin(sN.angle) * whiteBackOffset + Math.cos(sN.angle) * lineExtendPx;
+      const bxN = (sN.x - camX) + Math.sin(sN.angle) * whiteBackOffset + Math.cos(sN.angle) * lineExtendPx;
       const byN = sN.y - Math.cos(sN.angle) * whiteBackOffset + Math.sin(sN.angle) * lineExtendPx;
       ctx.lineTo(bxN, byN);
     }
@@ -301,24 +307,23 @@ function drawCatBody(ctx, parts, camX) {
     ctx.stroke();
     ctx.restore();
 
-    // 黒ライン（背中の輪郭）
+    // 黒ライン
     ctx.save();
     ctx.beginPath();
     {
       const s0 = samples[0];
-      const bx0 = s0.x + Math.sin(s0.angle) * backOffset - Math.cos(s0.angle) * lineExtendPx;
+      const bx0 = (s0.x - camX) + Math.sin(s0.angle) * backOffset - Math.cos(s0.angle) * lineExtendPx;
       const by0 = s0.y - Math.cos(s0.angle) * backOffset - Math.sin(s0.angle) * lineExtendPx;
       ctx.moveTo(bx0, by0);
     }
     for (let i = 0; i < samples.length - 2; i += backStep) {
       const s = samples[i];
-      const bx = s.x + Math.sin(s.angle) * backOffset;
-      const by = s.y - Math.cos(s.angle) * backOffset;
-      ctx.lineTo(bx, by);
+      ctx.lineTo((s.x - camX) + Math.sin(s.angle) * backOffset,
+                 s.y          - Math.cos(s.angle) * backOffset);
     }
     {
       const sN = samples[samples.length - 2];
-      const bxN = sN.x + Math.sin(sN.angle) * backOffset + Math.cos(sN.angle) * lineExtendPx;
+      const bxN = (sN.x - camX) + Math.sin(sN.angle) * backOffset + Math.cos(sN.angle) * lineExtendPx;
       const byN = sN.y - Math.cos(sN.angle) * backOffset + Math.sin(sN.angle) * lineExtendPx;
       ctx.lineTo(bxN, byN);
     }
@@ -336,16 +341,16 @@ function drawCatBody(ctx, parts, camX) {
   ctx.textBaseline = 'middle';
   for (const p of parts) {
     const sx = p.worldX - camX;
-    const labelY = p.y - 14; // ねこの上方に浮かせる
+    const labelY = p.y - 14;
 
-    // 背景（丸角矩形）
-    const tw = ctx.measureText(p.label).width;
+    // ラベル幅をキャッシュ（毎フレームの measureText を回避）
+    let tw = _labelWidthCache.get(p.label);
+    if (tw === undefined) {
+      tw = ctx.measureText(p.label).width;
+      _labelWidthCache.set(p.label, tw);
+    }
     const padX = 5, padY = 3;
-    const bx = sx - tw / 2 - padX;
-    const by = labelY - 8 - padY;
-    const bw = tw + padX * 2;
-    const bh = 16 + padY * 2;
-    roundRectPath(ctx, bx, by, bw, bh, 5);
+    roundRectPath(ctx, sx - tw / 2 - padX, labelY - 8 - padY, tw + padX * 2, 16 + padY * 2, 5);
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fill();
 
@@ -734,6 +739,11 @@ let _groundCache = null; // offscreen canvas for ground gradient
 
 // Mountain layer cache: pre-render wide strips, scroll via drawImage
 let _mtCaches = null;   // [{canvas, lastOx}] per layer
+
+// Spline sample cache: skip sampleCatmullRom when parts haven't moved
+let _splineCache = null; // { key: string, samples: array }
+// Label width cache: measureText is expensive, cache per label string
+const _labelWidthCache = new Map();
 const MT_CACHE_PAD = 200; // extra pixels beyond viewport to avoid frequent redraws
 const MT_REDRAW_THRESHOLD = 100; // redraw when scrolled this far from cached origin
 
