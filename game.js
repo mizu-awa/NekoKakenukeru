@@ -211,7 +211,7 @@ function drawCatBody(ctx, parts, camX) {
   }));
 
   // スプライン上のサンプル数（パーツ間ごとに十分な密度）
-  const samplesPerSeg = Math.max(3, Math.ceil(PART_GAP / (PART_W * 0.45)));
+  const samplesPerSeg = Math.max(2, Math.ceil(PART_GAP / (PART_W * 0.6)));
   const totalSamples = samplesPerSeg * (parts.length - 1);
   const samples = sampleCatmullRom(controlPts, totalSamples);
 
@@ -364,12 +364,12 @@ function drawObstacle(ctx, obs, camX) {
   ctx.clip();
   ctx.strokeStyle = 'rgba(239,68,68,0.3)';
   ctx.lineWidth = 10;
-  for (let i = -h; i < w + h; i += 18) {
-    ctx.beginPath();
+  ctx.beginPath();
+  for (let i = -h; i < w + h; i += 24) {
     ctx.moveTo(sx + i, y);
     ctx.lineTo(sx + i + h, y + h);
-    ctx.stroke();
   }
+  ctx.stroke();
   ctx.restore();
 
   // Spikes on top
@@ -403,7 +403,7 @@ function drawMountainLayer(ctx, camX, parallax, baseY, color, amp, freq) {
   // Mountain silhouette
   ctx.beginPath();
   ctx.moveTo(0, GROUND_Y);
-  for (let sx = 0; sx <= CANVAS_W; sx += 4) {
+  for (let sx = 0; sx <= CANVAS_W; sx += 8) {
     ctx.lineTo(sx, baseY - _mtHeight(sx + ox, seed, amp, freq));
   }
   ctx.lineTo(CANVAS_W, GROUND_Y);
@@ -456,11 +456,7 @@ function drawMountainLayer(ctx, camX, parallax, baseY, color, amp, freq) {
 
 /** Draw the scrolling sky background. */
 function drawBackground(ctx, camX) {
-  const grad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
-  grad.addColorStop(0, '#4a90d9');
-  grad.addColorStop(1, '#a8d8f0');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, CANVAS_W, GROUND_Y);
+  ctx.drawImage(_bgCache, 0, 0);
 
   // Mountain ranges (far → near)
   drawMountainLayer(ctx, camX, 0.04, GROUND_Y * 0.65, '#7aabcc', 55, 0.006);
@@ -470,11 +466,7 @@ function drawBackground(ctx, camX) {
 
 /** Draw the ground plane with a glowing edge and tile grid. */
 function drawGround(ctx, camX) {
-  const grad = ctx.createLinearGradient(0, GROUND_Y, 0, CANVAS_H);
-  grad.addColorStop(0, '#1e293b');
-  grad.addColorStop(1, '#0f172a');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, GROUND_Y, CANVAS_W, CANVAS_H - GROUND_Y);
+  ctx.drawImage(_groundCache, 0, GROUND_Y);
 
   // Glow edge
   ctx.fillStyle = '#38bdf8';
@@ -485,12 +477,14 @@ function drawGround(ctx, camX) {
   const off = ((camX % tile) + tile) % tile;
   ctx.strokeStyle = 'rgba(56,189,248,0.1)';
   ctx.lineWidth = 1;
+  ctx.beginPath();
   for (let x = -off; x < CANVAS_W + tile; x += tile) {
-    ctx.beginPath(); ctx.moveTo(x, GROUND_Y); ctx.lineTo(x, CANVAS_H); ctx.stroke();
+    ctx.moveTo(x, GROUND_Y); ctx.lineTo(x, CANVAS_H);
   }
   for (let y2 = GROUND_Y + tile; y2 < CANVAS_H; y2 += tile) {
-    ctx.beginPath(); ctx.moveTo(0, y2); ctx.lineTo(CANVAS_W, y2); ctx.stroke();
+    ctx.moveTo(0, y2); ctx.lineTo(CANVAS_W, y2);
   }
+  ctx.stroke();
 }
 
 // ================================================================
@@ -665,12 +659,44 @@ function validateStage(stageIdx) {
 }
 
 // ================================================================
+//  CACHED BACKGROUNDS (avoid creating gradients every frame)
+// ================================================================
+let _bgCache = null;   // offscreen canvas for sky gradient
+let _groundCache = null; // offscreen canvas for ground gradient
+
+function ensureBgCache() {
+  if (_bgCache) return;
+  _bgCache = document.createElement('canvas');
+  _bgCache.width = CANVAS_W;
+  _bgCache.height = GROUND_Y;
+  const c = _bgCache.getContext('2d');
+  const grad = c.createLinearGradient(0, 0, 0, GROUND_Y);
+  grad.addColorStop(0, '#4a90d9');
+  grad.addColorStop(1, '#a8d8f0');
+  c.fillStyle = grad;
+  c.fillRect(0, 0, CANVAS_W, GROUND_Y);
+}
+
+function ensureGroundCache() {
+  if (_groundCache) return;
+  _groundCache = document.createElement('canvas');
+  _groundCache.width = CANVAS_W;
+  _groundCache.height = CANVAS_H - GROUND_Y;
+  const c = _groundCache.getContext('2d');
+  const grad = c.createLinearGradient(0, 0, 0, CANVAS_H - GROUND_Y);
+  grad.addColorStop(0, '#1e293b');
+  grad.addColorStop(1, '#0f172a');
+  c.fillStyle = grad;
+  c.fillRect(0, 0, CANVAS_W, CANVAS_H - GROUND_Y);
+}
+
+// ================================================================
 //  GAME
 // ================================================================
 class Game {
   constructor() {
     this.canvas   = document.getElementById('gameCanvas');
-    this.ctx      = this.canvas.getContext('2d');
+    this.ctx      = this.canvas.getContext('2d', { alpha: false });
     this.keys     = new Set();
     this.state    = 'start';   // start | playing | gameover | clear
     this.stageIdx = 0;
@@ -683,6 +709,9 @@ class Game {
     this.autoPlay = false;
     this.autoAdvanceTimer = 0;
     this.validationResult = null;
+
+    ensureBgCache();
+    ensureGroundCache();
 
     this._resizeCanvas();
     window.addEventListener('resize', () => this._resizeCanvas());
@@ -928,8 +957,7 @@ class Game {
   // ----------------------------------------------------------
   _draw() {
     const ctx = this.ctx;
-    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-
+    // alpha:false + 背景が全面を覆うため clearRect は不要
     drawBackground(ctx, this.camX);
     drawGround(ctx, this.camX);
 
