@@ -269,6 +269,9 @@ function drawCatBody(ctx, parts, camX) {
     const backOffset = PART_H * 0.20;
     const lineExtendPx = 8; // 両端を延長するpx数
 
+    // 背中ラインの間引きステップ（2〜3点おき）
+    const backStep = Math.max(1, Math.floor(samples.length / (parts.length * 3)));
+
     // 白ライン（背中ラインの下側、胴体画像との隙間を埋める）
     const whiteBackOffset = backOffset - PART_H * 0.04;
     ctx.save();
@@ -279,7 +282,7 @@ function drawCatBody(ctx, parts, camX) {
       const by0 = s0.y - Math.cos(s0.angle) * whiteBackOffset - Math.sin(s0.angle) * lineExtendPx;
       ctx.moveTo(bx0, by0);
     }
-    for (let i = 0; i < samples.length - 2; i++) {
+    for (let i = 0; i < samples.length - 2; i += backStep) {
       const s = samples[i];
       const bx = s.x + Math.sin(s.angle) * whiteBackOffset;
       const by = s.y - Math.cos(s.angle) * whiteBackOffset;
@@ -307,7 +310,7 @@ function drawCatBody(ctx, parts, camX) {
       const by0 = s0.y - Math.cos(s0.angle) * backOffset - Math.sin(s0.angle) * lineExtendPx;
       ctx.moveTo(bx0, by0);
     }
-    for (let i = 0; i < samples.length - 2; i++) {
+    for (let i = 0; i < samples.length - 2; i += backStep) {
       const s = samples[i];
       const bx = s.x + Math.sin(s.angle) * backOffset;
       const by = s.y - Math.cos(s.angle) * backOffset;
@@ -543,27 +546,13 @@ function drawBackground(ctx, camX) {
   }
 }
 
-/** Draw the ground plane with a glowing edge and tile grid. */
-function drawGround(ctx, camX) {
+/** Draw the ground plane with a glowing edge. */
+function drawGround(ctx) {
   ctx.drawImage(_groundCache, 0, GROUND_Y);
 
   // Glow edge
   ctx.fillStyle = '#38bdf8';
   ctx.fillRect(0, GROUND_Y, CANVAS_W, 2);
-
-  // Grid
-  const tile = 48;
-  const off = ((camX % tile) + tile) % tile;
-  ctx.strokeStyle = 'rgba(56,189,248,0.1)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let x = -off; x < CANVAS_W + tile; x += tile) {
-    ctx.moveTo(x, GROUND_Y); ctx.lineTo(x, CANVAS_H);
-  }
-  for (let y2 = GROUND_Y + tile; y2 < CANVAS_H; y2 += tile) {
-    ctx.moveTo(0, y2); ctx.lineTo(CANVAS_W, y2);
-  }
-  ctx.stroke();
 }
 
 // ================================================================
@@ -1063,10 +1052,14 @@ class Game {
     const ctx = this.ctx;
     // alpha:false + 背景が全面を覆うため clearRect は不要
     drawBackground(ctx, this.camX);
-    drawGround(ctx, this.camX);
+    drawGround(ctx);
 
-    // Obstacles
-    this.obstacles.forEach(o => drawObstacle(ctx, o, this.camX));
+    // Obstacles (画面内のみ描画)
+    for (const o of this.obstacles) {
+      const sx = o.x - this.camX;
+      if (sx + o.w < 0 || sx > CANVAS_W) continue;
+      drawObstacle(ctx, o, this.camX);
+    }
 
     // スプラインベースでねこ全身を描画
     drawCatBody(ctx, this.parts, this.camX);
