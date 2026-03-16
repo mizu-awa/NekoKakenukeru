@@ -1164,25 +1164,22 @@ class Game {
   _loop(now) {
     requestAnimationFrame(t => this._loop(t));
 
-    // 固定タイムステップ: 描画FPSに関わらずゲーム速度を一定に保つ
-    const STEP = 1000 / 60; // 60fps相当の1ステップ(≈16.67ms)
     if (!this._lastFrame) this._lastFrame = now;
-    const elapsed = now - this._lastFrame;
+    const elapsed = Math.min(now - this._lastFrame, 84); // cap ≈12fps
     this._lastFrame = now;
 
+    // 60fps基準のステップに分割。FPSが低い時はキャッチアップ。
+    // 高リフレッシュレート(144Hz等)では毎フレーム最低1回updateで以前と同じ動作。
+    const STEP = 1000 / 60;
     this._accumulator = (this._accumulator || 0) + elapsed;
-    // スパイラル・オブ・デス防止: 最大5ステップまで
-    if (this._accumulator > STEP * 5) this._accumulator = STEP * 5;
+    const steps = Math.max(1, Math.floor(this._accumulator / STEP));
+    this._accumulator -= steps * STEP;
+    if (this._accumulator < 0) this._accumulator = 0;
 
-    let updated = false;
-    while (this._accumulator >= STEP) {
+    for (let i = 0; i < steps; i++) {
       this._update();
-      this._accumulator -= STEP;
-      updated = true;
     }
-
-    // 更新があった場合のみ描画（モバイルのバッテリー節約）
-    if (updated) this._draw();
+    this._draw();
   }
 }
 
