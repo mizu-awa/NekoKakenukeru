@@ -237,19 +237,29 @@ function drawCatBody(ctx, parts, camX) {
     ctx.restore();
   }
 
-  // --- 胴体タイルを描画 ---
-  for (let i = 0; i < samples.length; i++) {
+  // --- 胴体タイルを描画（間引き） ---
+  const step = Math.max(1, Math.floor(samples.length / (parts.length * 2)));
+  for (let i = 0; i < samples.length; i += step) {
     const s = samples[i];
-    const isFirst = (i === 0);
-    const isLast  = (i === samples.length - 1);
-
     drawBodyPart(ctx, {
       screenX: s.x,
       y: s.y - PART_H / 2,
       color: parts[0].color,
       label: null,
-      isHead: isLast,
-      isTail: isFirst,
+      isHead: (i + step >= samples.length),
+      isTail: (i === 0),
+    }, s.angle);
+  }
+  // 最終点（頭）が間引きで飛ばされた場合に補完
+  if ((samples.length - 1) % step !== 0) {
+    const s = samples[samples.length - 1];
+    drawBodyPart(ctx, {
+      screenX: s.x,
+      y: s.y - PART_H / 2,
+      color: parts[0].color,
+      label: null,
+      isHead: true,
+      isTail: false,
     }, s.angle);
   }
 
