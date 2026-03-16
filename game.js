@@ -350,7 +350,7 @@ function drawObstacle(ctx, obs, camX) {
   const { y, w, h } = obs;
   ctx.save();
 
-  // Body
+  // Body (solid fill + border, no clip/stripes for performance)
   roundRectPath(ctx, sx, y, w, h, 3);
   ctx.fillStyle = '#7f1d1d';
   ctx.fill();
@@ -358,19 +358,11 @@ function drawObstacle(ctx, obs, camX) {
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // Danger stripes (clipped to block)
-  ctx.save();
-  roundRectPath(ctx, sx, y, w, h, 3);
-  ctx.clip();
-  ctx.strokeStyle = 'rgba(239,68,68,0.3)';
-  ctx.lineWidth = 10;
-  ctx.beginPath();
-  for (let i = -h; i < w + h; i += 24) {
-    ctx.moveTo(sx + i, y);
-    ctx.lineTo(sx + i + h, y + h);
-  }
+  // Inner highlight line (lightweight alternative to stripes)
+  roundRectPath(ctx, sx + 3, y + 3, w - 6, h - 6, 2);
+  ctx.strokeStyle = 'rgba(239,68,68,0.25)';
+  ctx.lineWidth = 1;
   ctx.stroke();
-  ctx.restore();
 
   // Spikes on top
   ctx.fillStyle = '#ef4444';
@@ -454,14 +446,91 @@ function drawMountainLayer(ctx, camX, parallax, baseY, color, amp, freq) {
   ctx.restore();
 }
 
+/** Ensure mountain cache canvases exist. */
+function ensureMtCaches() {
+  if (_mtCaches) return;
+  const layers = [
+    { parallax: 0.04, baseY: GROUND_Y * 0.65, color: '#7aabcc', amp: 55, freq: 0.006 },
+    { parallax: 0.11, baseY: GROUND_Y * 0.75, color: '#5a8fb0', amp: 50, freq: 0.009 },
+    { parallax: 0.22, baseY: GROUND_Y * 0.85, color: '#3d6e8a', amp: 42, freq: 0.013 },
+  ];
+  _mtCaches = layers.map(l => ({
+    canvas: null, lastOx: -Infinity, ...l,
+  }));
+}
+
+/** Render a mountain layer into its cache if needed, then blit to screen. */
+function drawMountainLayerCached(ctx, camX, layer) {
+  const ox = camX * layer.parallax;
+  const cacheW = CANVAS_W + MT_CACHE_PAD * 2;
+
+  // Redraw cache if first time or scrolled too far
+  if (!layer.canvas || Math.abs(ox - layer.lastOx) > MT_REDRAW_THRESHOLD) {
+    if (!layer.canvas) {
+      layer.canvas = document.createElement('canvas');
+      layer.canvas.width = cacheW;
+      layer.canvas.height = CANVAS_H;
+    }
+    const c = layer.canvas.getContext('2d');
+    c.clearRect(0, 0, cacheW, CANVAS_H);
+
+    // Render mountain into cache (shifted so ox - MT_CACHE_PAD is at x=0)
+    const cacheOx = ox - MT_CACHE_PAD;
+    c.save();
+    c.fillStyle = layer.color;
+    c.beginPath();
+    c.moveTo(0, GROUND_Y);
+    const seed = layer.parallax * 17;
+    for (let sx = 0; sx <= cacheW; sx += 8) {
+      c.lineTo(sx, layer.baseY - _mtHeight(sx + cacheOx, seed, layer.amp, layer.freq));
+    }
+    c.lineTo(cacheW, GROUND_Y);
+    c.closePath();
+    c.fill();
+
+    // Cat ears
+    const nMin = Math.ceil(((cacheOx - 60) * layer.freq + seed - Math.PI / 2) / Math.PI);
+    const nMax = Math.floor(((cacheOx + cacheW + 60) * layer.freq + seed - Math.PI / 2) / Math.PI);
+    const ew = layer.amp * 0.36;
+    const eh = layer.amp * 0.34;
+    const gap = layer.amp * 0.22;
+    for (let n = nMin; n <= nMax; n++) {
+      if (((n % 5) + 5) % 5 !== 0) continue;
+      const wxPeak = (Math.PI / 2 + n * Math.PI - seed) / layer.freq;
+      const px = wxPeak - cacheOx;
+      const py = layer.baseY - layer.amp;
+      const base = py + ew * 0.3;
+      const lOuter = px - gap - ew * 2, lInner = px - gap, lTipX = px - gap - ew, lTipY = py - eh;
+      c.beginPath();
+      c.moveTo(lOuter, base); c.lineTo(lInner, base);
+      c.quadraticCurveTo(lInner - ew * 0.3, base - eh * 0.55, lTipX, lTipY);
+      c.quadraticCurveTo(lOuter + ew * 0.3, base - eh * 0.55, lOuter, base);
+      c.closePath(); c.fill();
+      const rInner = px + gap, rOuter = px + gap + ew * 2, rTipX = px + gap + ew, rTipY = py - eh;
+      c.beginPath();
+      c.moveTo(rInner, base); c.lineTo(rOuter, base);
+      c.quadraticCurveTo(rOuter - ew * 0.3, base - eh * 0.55, rTipX, rTipY);
+      c.quadraticCurveTo(rInner + ew * 0.3, base - eh * 0.55, rInner, base);
+      c.closePath(); c.fill();
+    }
+    c.restore();
+
+    layer.lastOx = ox;
+  }
+
+  // Blit: shift cache so that the cached region aligns with the viewport
+  const shiftX = -(ox - layer.lastOx) - MT_CACHE_PAD;
+  ctx.drawImage(layer.canvas, shiftX, 0);
+}
+
 /** Draw the scrolling sky background. */
 function drawBackground(ctx, camX) {
   ctx.drawImage(_bgCache, 0, 0);
 
-  // Mountain ranges (far → near)
-  drawMountainLayer(ctx, camX, 0.04, GROUND_Y * 0.65, '#7aabcc', 55, 0.006);
-  drawMountainLayer(ctx, camX, 0.11, GROUND_Y * 0.75, '#5a8fb0', 50, 0.009);
-  drawMountainLayer(ctx, camX, 0.22, GROUND_Y * 0.85, '#3d6e8a', 42, 0.013);
+  ensureMtCaches();
+  for (const layer of _mtCaches) {
+    drawMountainLayerCached(ctx, camX, layer);
+  }
 }
 
 /** Draw the ground plane with a glowing edge and tile grid. */
@@ -664,6 +733,11 @@ function validateStage(stageIdx) {
 let _bgCache = null;   // offscreen canvas for sky gradient
 let _groundCache = null; // offscreen canvas for ground gradient
 
+// Mountain layer cache: pre-render wide strips, scroll via drawImage
+let _mtCaches = null;   // [{canvas, lastOx}] per layer
+const MT_CACHE_PAD = 200; // extra pixels beyond viewport to avoid frequent redraws
+const MT_REDRAW_THRESHOLD = 100; // redraw when scrolled this far from cached origin
+
 function ensureBgCache() {
   if (_bgCache) return;
   _bgCache = document.createElement('canvas');
@@ -709,6 +783,8 @@ class Game {
     this.autoPlay = false;
     this.autoAdvanceTimer = 0;
     this.validationResult = null;
+    this._isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    this._lastFrame = 0;
 
     ensureBgCache();
     ensureGroundCache();
@@ -717,7 +793,7 @@ class Game {
     window.addEventListener('resize', () => this._resizeCanvas());
     this._setupInput();
     this._loadStage(0);
-    this._loop();
+    requestAnimationFrame(t => this._loop(t));
   }
 
   // ----------------------------------------------------------
@@ -740,6 +816,8 @@ class Game {
     this.obstacles = def.obstacles.map(o => ({ ...o }));
     this.camX      = 0;
     this.distance  = 0;
+    // Reset mountain caches so they redraw from new camera position
+    if (_mtCaches) _mtCaches.forEach(l => l.lastOx = -Infinity);
     this.parts     = Array.from({ length: def.numParts },
                        (_, i) => new BodyPart(i, def.numParts));
 
@@ -1052,10 +1130,18 @@ class Game {
   }
 
   // ----------------------------------------------------------
-  _loop() {
+  _loop(now) {
+    requestAnimationFrame(t => this._loop(t));
+
+    // Throttle to ~30fps on mobile to reduce GPU/CPU load
+    if (this._isMobile) {
+      if (!this._lastFrame) this._lastFrame = 0;
+      if (now - this._lastFrame < 30) return; // ~33ms = 30fps
+      this._lastFrame = now;
+    }
+
     this._update();
     this._draw();
-    requestAnimationFrame(() => this._loop());
   }
 }
 
