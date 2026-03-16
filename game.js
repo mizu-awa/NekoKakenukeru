@@ -142,14 +142,16 @@ function sampleCatmullRom(pts, totalSamples) {
         (4 * p0.y - 10 * p1.y + 8 * p2.y - 2 * p3.y) * t +
         (-3 * p0.y + 9 * p1.y - 9 * p2.y + 3 * p3.y) * t2);
 
-      result.push({ x, y, angle: Math.atan2(dy, dx) });
+      const angle = Math.atan2(dy, dx);
+      result.push({ x, y, angle, sinA: Math.sin(angle), cosA: Math.cos(angle) });
     }
   }
 
   // 最終点を追加
   const last = pts[pts.length - 1];
   const prev = pts[pts.length - 2];
-  result.push({ x: last.x, y: last.y, angle: Math.atan2(last.y - prev.y, last.x - prev.x) });
+  const lastAngle = Math.atan2(last.y - prev.y, last.x - prev.x);
+  result.push({ x: last.x, y: last.y, angle: lastAngle, sinA: Math.sin(lastAngle), cosA: Math.cos(lastAngle) });
 
   return result;
 }
@@ -231,15 +233,15 @@ function drawCatBody(ctx, parts, camX) {
     ctx.beginPath();
     for (let i = 0; i < samples.length; i += backStep) {
       const s = samples[i];
-      const bx = (s.x - camX) + Math.sin(s.angle) * whiteOffset;
-      const by = s.y - Math.cos(s.angle) * whiteOffset;
+      const bx = (s.x - camX) + s.sinA * whiteOffset;
+      const by = s.y - s.cosA * whiteOffset;
       if (i === 0) ctx.moveTo(bx, by);
       else         ctx.lineTo(bx, by);
     }
     // 最終点を補完
     const sLast = samples[samples.length - 1];
-    ctx.lineTo((sLast.x - camX) + Math.sin(sLast.angle) * whiteOffset,
-               sLast.y          - Math.cos(sLast.angle) * whiteOffset);
+    ctx.lineTo((sLast.x - camX) + sLast.sinA * whiteOffset,
+               sLast.y          - sLast.cosA * whiteOffset);
     ctx.strokeStyle = 'white';
     ctx.lineWidth   = PART_H * 0.35;
     ctx.lineCap     = 'round';
@@ -285,19 +287,19 @@ function drawCatBody(ctx, parts, camX) {
     ctx.beginPath();
     {
       const s0 = samples[0];
-      const bx0 = (s0.x - camX) + Math.sin(s0.angle) * whiteBackOffset - Math.cos(s0.angle) * lineExtendPx;
-      const by0 = s0.y - Math.cos(s0.angle) * whiteBackOffset - Math.sin(s0.angle) * lineExtendPx;
+      const bx0 = (s0.x - camX) + s0.sinA * whiteBackOffset - s0.cosA * lineExtendPx;
+      const by0 = s0.y - s0.cosA * whiteBackOffset - s0.sinA * lineExtendPx;
       ctx.moveTo(bx0, by0);
     }
     for (let i = 0; i < samples.length - 2; i += backStep) {
       const s = samples[i];
-      ctx.lineTo((s.x - camX) + Math.sin(s.angle) * whiteBackOffset,
-                 s.y          - Math.cos(s.angle) * whiteBackOffset);
+      ctx.lineTo((s.x - camX) + s.sinA * whiteBackOffset,
+                 s.y          - s.cosA * whiteBackOffset);
     }
     {
       const sN = samples[samples.length - 2];
-      const bxN = (sN.x - camX) + Math.sin(sN.angle) * whiteBackOffset + Math.cos(sN.angle) * lineExtendPx;
-      const byN = sN.y - Math.cos(sN.angle) * whiteBackOffset + Math.sin(sN.angle) * lineExtendPx;
+      const bxN = (sN.x - camX) + sN.sinA * whiteBackOffset + sN.cosA * lineExtendPx;
+      const byN = sN.y - sN.cosA * whiteBackOffset + sN.sinA * lineExtendPx;
       ctx.lineTo(bxN, byN);
     }
     ctx.strokeStyle = 'white';
@@ -312,19 +314,19 @@ function drawCatBody(ctx, parts, camX) {
     ctx.beginPath();
     {
       const s0 = samples[0];
-      const bx0 = (s0.x - camX) + Math.sin(s0.angle) * backOffset - Math.cos(s0.angle) * lineExtendPx;
-      const by0 = s0.y - Math.cos(s0.angle) * backOffset - Math.sin(s0.angle) * lineExtendPx;
+      const bx0 = (s0.x - camX) + s0.sinA * backOffset - s0.cosA * lineExtendPx;
+      const by0 = s0.y - s0.cosA * backOffset - s0.sinA * lineExtendPx;
       ctx.moveTo(bx0, by0);
     }
     for (let i = 0; i < samples.length - 2; i += backStep) {
       const s = samples[i];
-      ctx.lineTo((s.x - camX) + Math.sin(s.angle) * backOffset,
-                 s.y          - Math.cos(s.angle) * backOffset);
+      ctx.lineTo((s.x - camX) + s.sinA * backOffset,
+                 s.y          - s.cosA * backOffset);
     }
     {
       const sN = samples[samples.length - 2];
-      const bxN = (sN.x - camX) + Math.sin(sN.angle) * backOffset + Math.cos(sN.angle) * lineExtendPx;
-      const byN = sN.y - Math.cos(sN.angle) * backOffset + Math.sin(sN.angle) * lineExtendPx;
+      const bxN = (sN.x - camX) + sN.sinA * backOffset + sN.cosA * lineExtendPx;
+      const byN = sN.y - sN.cosA * backOffset + sN.sinA * lineExtendPx;
       ctx.lineTo(bxN, byN);
     }
     ctx.strokeStyle = 'black';
@@ -836,7 +838,7 @@ class Game {
   _loadStage(idx) {
     const def      = STAGES[Math.min(idx, STAGES.length - 1)];
     this.stageIdx  = idx;
-    this.speed     = def.speed * (this._isMobile ? 2 : 1);
+    this.speed     = def.speed;
     this.stageLen  = def.length;
     this.obstacles = def.obstacles.map(o => ({ ...o }));
     this.camX      = 0;
@@ -1162,15 +1164,25 @@ class Game {
   _loop(now) {
     requestAnimationFrame(t => this._loop(t));
 
-    // Throttle to ~30fps on mobile to reduce GPU/CPU load
-    if (this._isMobile) {
-      if (!this._lastFrame) this._lastFrame = 0;
-      if (now - this._lastFrame < 30) return; // ~33ms = 30fps
-      this._lastFrame = now;
+    // 固定タイムステップ: 描画FPSに関わらずゲーム速度を一定に保つ
+    const STEP = 1000 / 60; // 60fps相当の1ステップ(≈16.67ms)
+    if (!this._lastFrame) this._lastFrame = now;
+    const elapsed = now - this._lastFrame;
+    this._lastFrame = now;
+
+    this._accumulator = (this._accumulator || 0) + elapsed;
+    // スパイラル・オブ・デス防止: 最大5ステップまで
+    if (this._accumulator > STEP * 5) this._accumulator = STEP * 5;
+
+    let updated = false;
+    while (this._accumulator >= STEP) {
+      this._update();
+      this._accumulator -= STEP;
+      updated = true;
     }
 
-    this._update();
-    this._draw();
+    // 更新があった場合のみ描画（モバイルのバッテリー節約）
+    if (updated) this._draw();
   }
 }
 
