@@ -827,7 +827,7 @@ class Game {
   _loadStage(idx) {
     const def      = STAGES[Math.min(idx, STAGES.length - 1)];
     this.stageIdx  = idx;
-    this.speed     = def.speed;
+    this.speed     = def.speed * (this._isMobile ? 2 : 1);
     this.stageLen  = def.length;
     this.obstacles = def.obstacles.map(o => ({ ...o }));
     this.camX      = 0;
