@@ -249,7 +249,7 @@ function drawCatBody(ctx, parts, camX) {
 
   // --- 胴体タイルを描画（間引き） ---
   const allOnGround = parts.every(p => p.onGround);
-  const tileCount = parts.length * (allOnGround ? 1.5 : 2);
+  const tileCount = parts.length * (allOnGround ? 1.5 : 3);
   const step = Math.max(1, Math.floor(samples.length / tileCount));
   for (let i = 0; i < samples.length - 1; i += step) {
     const s = samples[i];
@@ -283,9 +283,9 @@ function drawCatBody(ctx, parts, camX) {
     const headPart = parts[parts.length - 1];
     const neckPart = parts[parts.length - 2];
     const yGap = Math.abs(headPart.y - neckPart.y);
-    const lineExtendHead = 3.5 + yGap * 0.125;
+    const lineExtendHead = 3.5 + yGap * 0.15;
 
-    // 白ライン
+    // 白ライン（quadraticCurveTo で滑らか化）
     const whiteBackOffset = backOffset - PART_H * 0.04;
     ctx.save();
     ctx.beginPath();
@@ -295,10 +295,31 @@ function drawCatBody(ctx, parts, camX) {
       const by0 = s0.y - s0.cosA * whiteBackOffset - s0.sinA * lineExtendTail;
       ctx.moveTo(bx0, by0);
     }
-    for (let i = 0; i < samples.length - 2; i++) {
-      const s = samples[i];
-      ctx.lineTo((s.x - camX) + s.sinA * whiteBackOffset,
-                 s.y          - s.cosA * whiteBackOffset);
+    {
+      // 各サンプル点の背中座標を算出
+      const len = samples.length - 2;
+      const bxArr = new Array(len);
+      const byArr = new Array(len);
+      for (let i = 0; i < len; i++) {
+        const s = samples[i];
+        bxArr[i] = (s.x - camX) + s.sinA * whiteBackOffset;
+        byArr[i] = s.y          - s.cosA * whiteBackOffset;
+      }
+      if (len === 1) {
+        ctx.lineTo(bxArr[0], byArr[0]);
+      } else if (len >= 2) {
+        // 最初の点へ直線
+        ctx.lineTo(bxArr[0], byArr[0]);
+        // 中間: 隣接点の中点を通過点、サンプル点を制御点とする二次ベジェ
+        for (let i = 1; i < len - 1; i++) {
+          const mx = (bxArr[i] + bxArr[i + 1]) * 0.5;
+          const my = (byArr[i] + byArr[i + 1]) * 0.5;
+          ctx.quadraticCurveTo(bxArr[i], byArr[i], mx, my);
+        }
+        // 最終サンプル点へ
+        ctx.quadraticCurveTo(bxArr[len - 1], byArr[len - 1],
+                             bxArr[len - 1], byArr[len - 1]);
+      }
     }
     {
       const sN = samples[samples.length - 2];
@@ -313,7 +334,7 @@ function drawCatBody(ctx, parts, camX) {
     ctx.stroke();
     ctx.restore();
 
-    // 黒ライン
+    // 黒ライン（quadraticCurveTo で滑らか化）
     ctx.save();
     ctx.beginPath();
     {
@@ -322,10 +343,27 @@ function drawCatBody(ctx, parts, camX) {
       const by0 = s0.y - s0.cosA * backOffset - s0.sinA * lineExtendTail;
       ctx.moveTo(bx0, by0);
     }
-    for (let i = 0; i < samples.length - 2; i++) {
-      const s = samples[i];
-      ctx.lineTo((s.x - camX) + s.sinA * backOffset,
-                 s.y          - s.cosA * backOffset);
+    {
+      const len = samples.length - 2;
+      const bxArr = new Array(len);
+      const byArr = new Array(len);
+      for (let i = 0; i < len; i++) {
+        const s = samples[i];
+        bxArr[i] = (s.x - camX) + s.sinA * backOffset;
+        byArr[i] = s.y          - s.cosA * backOffset;
+      }
+      if (len === 1) {
+        ctx.lineTo(bxArr[0], byArr[0]);
+      } else if (len >= 2) {
+        ctx.lineTo(bxArr[0], byArr[0]);
+        for (let i = 1; i < len - 1; i++) {
+          const mx = (bxArr[i] + bxArr[i + 1]) * 0.5;
+          const my = (byArr[i] + byArr[i + 1]) * 0.5;
+          ctx.quadraticCurveTo(bxArr[i], byArr[i], mx, my);
+        }
+        ctx.quadraticCurveTo(bxArr[len - 1], byArr[len - 1],
+                             bxArr[len - 1], byArr[len - 1]);
+      }
     }
     {
       const sN = samples[samples.length - 2];
