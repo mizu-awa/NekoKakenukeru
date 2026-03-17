@@ -2,11 +2,11 @@
   "title":         "Neko Run Run",
   "startSub":      "Press Enter / Space / Tap to Start",
   "gameOver":      "Game Over",
-  "gameOverSub":   "Press Enter to Retry",
+  "gameOverSub":   "Press Enter / Space / Tap to Retry",
   "stageClear":    "Stage {stage} Clear!",
   "stageClearSub": "Next: {parts} parts!  Press Enter to Continue",
   "allClear":      "All Stages Clear!",
-  "allClearSub":   "Press Enter to Restart",
+  "allClearSub":   "Press Enter / Space / Tap to Restart",
   "keyHints":      "{keys}: Jump each part  |  Space: Jump all",
   "stageLabel":    "Stage {n}",
   "goal":          "GOAL"
