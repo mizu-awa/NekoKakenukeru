@@ -1183,30 +1183,10 @@ class Game {
       this._fpsTime = 0;
     }
 
-    // リフレッシュレート自動検出（最初の30フレームで計測）
-    if (!this._step) {
-      this._calibSamples = this._calibSamples || [];
-      if (rawElapsed > 0 && rawElapsed < 100) {
-        this._calibSamples.push(rawElapsed);
-      }
-      if (this._calibSamples.length >= 30) {
-        // 中央値でリフレッシュレートを推定
-        const sorted = [...this._calibSamples].sort((a, b) => a - b);
-        const median = sorted[Math.floor(sorted.length / 2)];
-        this._step = median;
-        this._detectedRate = Math.round(1000 / median);
-      } else {
-        // キャリブレーション中: 1フレーム=1update（元の動作）
-        this._update();
-        this._draw();
-        return;
-      }
-    }
-
-    // 検出したリフレッシュレートを基準にしたタイムステップ
-    // PC(144Hz等): STEP≈6.94ms → 1update/frame → 元の速度と同じ
-    // モバイル(60Hz): STEP≈6.94ms → ≈2.4updates/frame → PCと同じ速度にキャッチアップ
-    const STEP = this._step;
+    // 固定タイムステップ: PCの164Hzに合わせた速度を全デバイスで再現
+    // PC(164Hz): 1update/frame = 164updates/sec
+    // モバイル(60Hz): ~2.7updates/frame × 60 = ~164updates/sec（キャッチアップ）
+    const STEP = 1000 / 164;
     const elapsed = Math.min(rawElapsed, 1000);
     this._accumulator = (this._accumulator || 0) + elapsed;
     const steps = Math.min(60, Math.floor(this._accumulator / STEP));
@@ -1219,14 +1199,16 @@ class Game {
 
     // FPS表示（デバッグ用）
     if (this._fpsDisplay != null) {
+      const label = `${this._fpsDisplay}fps s${steps}`;
       this.ctx.save();
-      this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      this.ctx.fillRect(CANVAS_W - 70, CANVAS_H - 22, 66, 18);
+      this.ctx.font = 'bold 16px monospace';
+      const tw = this.ctx.measureText(label).width + 12;
+      this.ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      this.ctx.fillRect(CANVAS_W - tw - 4, CANVAS_H - 26, tw + 4, 24);
       this.ctx.fillStyle = '#0f0';
-      this.ctx.font = '12px monospace';
       this.ctx.textAlign = 'right';
       this.ctx.textBaseline = 'bottom';
-      this.ctx.fillText(`${this._fpsDisplay}fps s${steps} @${this._detectedRate}Hz`, CANVAS_W - 8, CANVAS_H - 6);
+      this.ctx.fillText(label, CANVAS_W - 8, CANVAS_H - 6);
       this.ctx.restore();
     }
   }
