@@ -248,21 +248,22 @@ function drawCatBody(ctx, parts, camX) {
   }
 
   // --- 胴体タイルを描画（間引き） ---
-  const tileCount = parts.length * 5;
+  const allOnGround = parts.every(p => p.onGround);
+  const tileCount = parts.length * (allOnGround ? 1.5 : 2);
   const step = Math.max(1, Math.floor(samples.length / tileCount));
-  for (let i = 0; i < samples.length; i += step) {
+  for (let i = 0; i < samples.length - 1; i += step) {
     const s = samples[i];
     drawBodyPart(ctx, {
       screenX: s.x - camX,
       y: s.y - PART_H / 2,
       color: parts[0].color,
       label: null,
-      isHead: (i + step >= samples.length),
+      isHead: false,
       isTail: (i === 0),
     }, s.angle);
   }
-  // 最終点（頭）が間引きで飛ばされた場合に補完
-  if ((samples.length - 1) % step !== 0) {
+  // 最終点（頭）は常に1回だけ描画
+  {
     const s = samples[samples.length - 1];
     drawBodyPart(ctx, {
       screenX: s.x - camX,
@@ -282,7 +283,7 @@ function drawCatBody(ctx, parts, camX) {
     const headPart = parts[parts.length - 1];
     const neckPart = parts[parts.length - 2];
     const yGap = Math.abs(headPart.y - neckPart.y);
-    const lineExtendHead = 8 + yGap * 0.25;
+    const lineExtendHead = 3.5 + yGap * 0.125;
 
     // 白ライン
     const whiteBackOffset = backOffset - PART_H * 0.04;

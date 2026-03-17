@@ -1,6 +1,6 @@
 {
   "title":         "ねこかけぬける",
-  "startSub":      "Enter / Space / ボタン でスタート",
+  "startSub":      "Enter / Space / タップ でスタート",
   "gameOver":      "ゲームオーバー",
   "gameOverSub":   "Enter で再挑戦",
   "stageClear":    "Stage {stage} クリア!",

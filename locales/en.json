@@ -1,6 +1,6 @@
 {
-  "title":         "Neko Kakenukeru",
-  "startSub":      "Press Enter / Space / Button to Start",
+  "title":         "Neko Run Run",
+  "startSub":      "Press Enter / Space / Tap to Start",
   "gameOver":      "Game Over",
   "gameOverSub":   "Press Enter to Retry",
   "stageClear":    "Stage {stage} Clear!",
