@@ -205,7 +205,7 @@ function drawBodyPart(ctx, part, angle = 0) {
  * @param {BodyPart[]} parts   全パーツ（tail=0 … head=N-1）
  * @param {number} camX
  */
-function drawCatBody(ctx, parts, camX) {
+function drawCatBody(ctx, parts, camX, isMobile) {
   // スプラインキャッシュ: パーツ位置が変わっていなければ再計算しない
   // サンプルはワールド座標で保存し、描画時に camX を引く
   const cacheKey = parts.map(p => `${p.worldX | 0},${p.y | 0}`).join(';');
@@ -251,7 +251,9 @@ function drawCatBody(ctx, parts, camX) {
   }
 
   // --- 胴体タイルを描画（間引き） ---
-  const step = Math.max(1, Math.floor(samples.length / (parts.length * 2)));
+  // モバイル: パーツ数分だけ描画（save/translate/rotate/drawImageが重いため）
+  const tileCount = isMobile ? parts.length : parts.length * 2;
+  const step = Math.max(1, Math.floor(samples.length / tileCount));
   for (let i = 0; i < samples.length; i += step) {
     const s = samples[i];
     drawBodyPart(ctx, {
@@ -365,7 +367,7 @@ function drawCatBody(ctx, parts, camX) {
  * Draw an obstacle block.
  * Replace to swap in spike/lava/enemy sprites.
  */
-function drawObstacle(ctx, obs, camX) {
+function drawObstacle(ctx, obs, camX, isMobile) {
   const sx = obs.x - camX;
   const { y, w, h } = obs;
   ctx.save();
@@ -378,24 +380,26 @@ function drawObstacle(ctx, obs, camX) {
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // Inner highlight line (lightweight alternative to stripes)
-  roundRectPath(ctx, sx + 3, y + 3, w - 6, h - 6, 2);
-  ctx.strokeStyle = 'rgba(239,68,68,0.25)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  if (!isMobile) {
+    // Inner highlight line (PC only)
+    roundRectPath(ctx, sx + 3, y + 3, w - 6, h - 6, 2);
+    ctx.strokeStyle = 'rgba(239,68,68,0.25)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
 
-  // Spikes on top
+  // Spikes on top — モバイルでは1パスで全スパイクをバッチ描画
   ctx.fillStyle = '#ef4444';
   const spikeCount = Math.max(1, Math.floor(w / 14));
   const spikeW = w / spikeCount;
+  ctx.beginPath();
   for (let i = 0; i < spikeCount; i++) {
     const cx = sx + (i + 0.5) * spikeW;
-    ctx.beginPath();
     ctx.moveTo(cx - spikeW * 0.45, y);
     ctx.lineTo(cx,                  y - 11);
     ctx.lineTo(cx + spikeW * 0.45, y);
-    ctx.fill();
   }
+  ctx.fill();
 
   ctx.restore();
 }
@@ -544,11 +548,13 @@ function drawMountainLayerCached(ctx, camX, layer) {
 }
 
 /** Draw the scrolling sky background. */
-function drawBackground(ctx, camX) {
+function drawBackground(ctx, camX, isMobile) {
   ctx.drawImage(_bgCache, 0, 0);
 
   ensureMtCaches();
-  for (const layer of _mtCaches) {
+  // モバイルでは山を1層だけ描画（3→1で描画コスト1/3）
+  const layers = isMobile ? [_mtCaches[2]] : _mtCaches;
+  for (const layer of layers) {
     drawMountainLayerCached(ctx, camX, layer);
   }
 }
@@ -1063,18 +1069,18 @@ class Game {
   _draw() {
     const ctx = this.ctx;
     // alpha:false + 背景が全面を覆うため clearRect は不要
-    drawBackground(ctx, this.camX);
+    drawBackground(ctx, this.camX, this._isMobile);
     drawGround(ctx);
 
     // Obstacles (画面内のみ描画)
     for (const o of this.obstacles) {
       const sx = o.x - this.camX;
       if (sx + o.w < 0 || sx > CANVAS_W) continue;
-      drawObstacle(ctx, o, this.camX);
+      drawObstacle(ctx, o, this.camX, this._isMobile);
     }
 
     // スプラインベースでねこ全身を描画
-    drawCatBody(ctx, this.parts, this.camX);
+    drawCatBody(ctx, this.parts, this.camX, this._isMobile);
 
     // Progress bar
     const prog = Math.min(this.distance / this.stageLen, 1);
@@ -1165,14 +1171,24 @@ class Game {
     requestAnimationFrame(t => this._loop(t));
 
     if (!this._lastFrame) this._lastFrame = now;
-    const elapsed = Math.min(now - this._lastFrame, 334); // cap ≈3fps
+    const rawElapsed = now - this._lastFrame;
     this._lastFrame = now;
+
+    // FPS計測
+    this._fpsFrames = (this._fpsFrames || 0) + 1;
+    this._fpsTime = (this._fpsTime || 0) + rawElapsed;
+    if (this._fpsTime >= 1000) {
+      this._fpsDisplay = this._fpsFrames;
+      this._fpsFrames = 0;
+      this._fpsTime = 0;
+    }
 
     // 60fps基準のステップに分割。FPSが低い時はキャッチアップ。
     // 高リフレッシュレート(144Hz等)では毎フレーム最低1回updateで以前と同じ動作。
     const STEP = 1000 / 60;
+    const elapsed = Math.min(rawElapsed, 1000); // cap at 1sec
     this._accumulator = (this._accumulator || 0) + elapsed;
-    const steps = Math.max(1, Math.floor(this._accumulator / STEP));
+    const steps = Math.max(1, Math.min(60, Math.floor(this._accumulator / STEP)));
     this._accumulator -= steps * STEP;
     if (this._accumulator < 0) this._accumulator = 0;
 
@@ -1180,6 +1196,19 @@ class Game {
       this._update();
     }
     this._draw();
+
+    // FPS表示（デバッグ用）
+    if (this._fpsDisplay != null) {
+      this.ctx.save();
+      this.ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      this.ctx.fillRect(CANVAS_W - 70, CANVAS_H - 22, 66, 18);
+      this.ctx.fillStyle = '#0f0';
+      this.ctx.font = '12px monospace';
+      this.ctx.textAlign = 'right';
+      this.ctx.textBaseline = 'bottom';
+      this.ctx.fillText(`${this._fpsDisplay}fps s${steps}`, CANVAS_W - 8, CANVAS_H - 6);
+      this.ctx.restore();
+    }
   }
 }
 
