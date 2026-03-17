@@ -217,7 +217,7 @@ function drawCatBody(ctx, parts, camX) {
       x: p.worldX,          // ワールド座標
       y: p.y + PART_H / 2,
     }));
-    const samplesPerSeg = Math.max(2, Math.ceil(PART_GAP / (PART_W * 0.6)));
+    const samplesPerSeg = Math.max(2, Math.ceil(PART_GAP / (PART_W * 0.3)));
     const totalSamples = samplesPerSeg * (parts.length - 1);
     samples = sampleCatmullRom(controlPts, totalSamples);
     _splineCache = { key: cacheKey, samples };
@@ -248,7 +248,7 @@ function drawCatBody(ctx, parts, camX) {
   }
 
   // --- 胴体タイルを描画（間引き） ---
-  const tileCount = parts.length * 3;
+  const tileCount = parts.length * 5;
   const step = Math.max(1, Math.floor(samples.length / tileCount));
   for (let i = 0; i < samples.length; i += step) {
     const s = samples[i];
@@ -283,7 +283,6 @@ function drawCatBody(ctx, parts, camX) {
     const neckPart = parts[parts.length - 2];
     const yGap = Math.abs(headPart.y - neckPart.y);
     const lineExtendHead = 8 + yGap * 0.25;
-    if (yGap > 0) console.log('yGap:', yGap, 'lineExtendHead:', lineExtendHead, 'samples:', samples.length);
 
     // 白ライン
     const whiteBackOffset = backOffset - PART_H * 0.04;
