@@ -1165,7 +1165,7 @@ class Game {
     requestAnimationFrame(t => this._loop(t));
 
     if (!this._lastFrame) this._lastFrame = now;
-    const elapsed = Math.min(now - this._lastFrame, 84); // cap ≈12fps
+    const elapsed = Math.min(now - this._lastFrame, 334); // cap ≈3fps
     this._lastFrame = now;
 
     // 60fps基準のステップに分割。FPSが低い時はキャッチアップ。
