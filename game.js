@@ -277,7 +277,13 @@ function drawCatBody(ctx, parts, camX) {
   // --- 背中ライン（白＋黒） ---
   if (samples.length >= 2) {
     const backOffset = PART_H * 0.20;
-    const lineExtendPx = 8;
+    const lineExtendTail = 8;
+    // 頭と隣パーツのY差が大きいほど頭側の延長を伸ばす
+    const headPart = parts[parts.length - 1];
+    const neckPart = parts[parts.length - 2];
+    const yGap = Math.abs(headPart.y - neckPart.y);
+    const lineExtendHead = 8 + yGap * 0.25;
+    if (yGap > 0) console.log('yGap:', yGap, 'lineExtendHead:', lineExtendHead, 'samples:', samples.length);
 
     // 白ライン
     const whiteBackOffset = backOffset - PART_H * 0.04;
@@ -285,8 +291,8 @@ function drawCatBody(ctx, parts, camX) {
     ctx.beginPath();
     {
       const s0 = samples[0];
-      const bx0 = (s0.x - camX) + s0.sinA * whiteBackOffset - s0.cosA * lineExtendPx;
-      const by0 = s0.y - s0.cosA * whiteBackOffset - s0.sinA * lineExtendPx;
+      const bx0 = (s0.x - camX) + s0.sinA * whiteBackOffset - s0.cosA * lineExtendTail;
+      const by0 = s0.y - s0.cosA * whiteBackOffset - s0.sinA * lineExtendTail;
       ctx.moveTo(bx0, by0);
     }
     for (let i = 0; i < samples.length - 2; i++) {
@@ -296,8 +302,8 @@ function drawCatBody(ctx, parts, camX) {
     }
     {
       const sN = samples[samples.length - 2];
-      const bxN = (sN.x - camX) + sN.sinA * whiteBackOffset + sN.cosA * lineExtendPx;
-      const byN = sN.y - sN.cosA * whiteBackOffset + sN.sinA * lineExtendPx;
+      const bxN = (sN.x - camX) + sN.sinA * whiteBackOffset + sN.cosA * lineExtendHead;
+      const byN = sN.y - sN.cosA * whiteBackOffset + sN.sinA * lineExtendHead;
       ctx.lineTo(bxN, byN);
     }
     ctx.strokeStyle = 'white';
@@ -312,8 +318,8 @@ function drawCatBody(ctx, parts, camX) {
     ctx.beginPath();
     {
       const s0 = samples[0];
-      const bx0 = (s0.x - camX) + s0.sinA * backOffset - s0.cosA * lineExtendPx;
-      const by0 = s0.y - s0.cosA * backOffset - s0.sinA * lineExtendPx;
+      const bx0 = (s0.x - camX) + s0.sinA * backOffset - s0.cosA * lineExtendTail;
+      const by0 = s0.y - s0.cosA * backOffset - s0.sinA * lineExtendTail;
       ctx.moveTo(bx0, by0);
     }
     for (let i = 0; i < samples.length - 2; i++) {
@@ -323,8 +329,8 @@ function drawCatBody(ctx, parts, camX) {
     }
     {
       const sN = samples[samples.length - 2];
-      const bxN = (sN.x - camX) + sN.sinA * backOffset + sN.cosA * lineExtendPx;
-      const byN = sN.y - sN.cosA * backOffset + sN.sinA * lineExtendPx;
+      const bxN = (sN.x - camX) + sN.sinA * backOffset + sN.cosA * lineExtendHead;
+      const byN = sN.y - sN.cosA * backOffset + sN.sinA * lineExtendHead;
       ctx.lineTo(bxN, byN);
     }
     ctx.strokeStyle = 'black';
