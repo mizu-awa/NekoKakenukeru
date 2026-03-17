@@ -1183,9 +1183,31 @@ class Game {
       this._fpsTime = 0;
     }
 
-    // 固定60updates/sec: PC(144Hz等)もモバイルも同じゲーム速度にする
-    const STEP = 1000 / 60;
-    const elapsed = Math.min(rawElapsed, 1000); // cap at 1sec
+    // リフレッシュレート自動検出（最初の30フレームで計測）
+    if (!this._step) {
+      this._calibSamples = this._calibSamples || [];
+      if (rawElapsed > 0 && rawElapsed < 100) {
+        this._calibSamples.push(rawElapsed);
+      }
+      if (this._calibSamples.length >= 30) {
+        // 中央値でリフレッシュレートを推定
+        const sorted = [...this._calibSamples].sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)];
+        this._step = median;
+        this._detectedRate = Math.round(1000 / median);
+      } else {
+        // キャリブレーション中: 1フレーム=1update（元の動作）
+        this._update();
+        this._draw();
+        return;
+      }
+    }
+
+    // 検出したリフレッシュレートを基準にしたタイムステップ
+    // PC(144Hz等): STEP≈6.94ms → 1update/frame → 元の速度と同じ
+    // モバイル(60Hz): STEP≈6.94ms → ≈2.4updates/frame → PCと同じ速度にキャッチアップ
+    const STEP = this._step;
+    const elapsed = Math.min(rawElapsed, 1000);
     this._accumulator = (this._accumulator || 0) + elapsed;
     const steps = Math.min(60, Math.floor(this._accumulator / STEP));
     this._accumulator -= steps * STEP;
@@ -1204,7 +1226,7 @@ class Game {
       this.ctx.font = '12px monospace';
       this.ctx.textAlign = 'right';
       this.ctx.textBaseline = 'bottom';
-      this.ctx.fillText(`${this._fpsDisplay}fps s${steps}`, CANVAS_W - 8, CANVAS_H - 6);
+      this.ctx.fillText(`${this._fpsDisplay}fps s${steps} @${this._detectedRate}Hz`, CANVAS_W - 8, CANVAS_H - 6);
       this.ctx.restore();
     }
   }
