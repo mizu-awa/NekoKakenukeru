@@ -1183,14 +1183,12 @@ class Game {
       this._fpsTime = 0;
     }
 
-    // 60fps基準のステップに分割。FPSが低い時はキャッチアップ。
-    // 高リフレッシュレート(144Hz等)では毎フレーム最低1回updateで以前と同じ動作。
+    // 固定60updates/sec: PC(144Hz等)もモバイルも同じゲーム速度にする
     const STEP = 1000 / 60;
     const elapsed = Math.min(rawElapsed, 1000); // cap at 1sec
     this._accumulator = (this._accumulator || 0) + elapsed;
-    const steps = Math.max(1, Math.min(60, Math.floor(this._accumulator / STEP)));
+    const steps = Math.min(60, Math.floor(this._accumulator / STEP));
     this._accumulator -= steps * STEP;
-    if (this._accumulator < 0) this._accumulator = 0;
 
     for (let i = 0; i < steps; i++) {
       this._update();
