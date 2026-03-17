@@ -205,7 +205,7 @@ function drawBodyPart(ctx, part, angle = 0) {
  * @param {BodyPart[]} parts   全パーツ（tail=0 … head=N-1）
  * @param {number} camX
  */
-function drawCatBody(ctx, parts, camX, isMobile) {
+function drawCatBody(ctx, parts, camX) {
   // スプラインキャッシュ: パーツ位置が変わっていなければ再計算しない
   // サンプルはワールド座標で保存し、描画時に camX を引く
   const cacheKey = parts.map(p => `${p.worldX | 0},${p.y | 0}`).join(';');
@@ -223,15 +223,12 @@ function drawCatBody(ctx, parts, camX, isMobile) {
     _splineCache = { key: cacheKey, samples };
   }
 
-  // 間引きステップ（白帯・背中ライン・タイルで共用）
-  const backStep = Math.max(1, Math.floor(samples.length / (parts.length * 3)));
-
-  // --- 白い胴体背景の下塗り（間引き） ---
+  // --- 白い胴体背景の下塗り ---
   if (samples.length >= 2) {
     const whiteOffset = PART_H * 0.05;
     ctx.save();
     ctx.beginPath();
-    for (let i = 0; i < samples.length; i += backStep) {
+    for (let i = 0; i < samples.length; i++) {
       const s = samples[i];
       const bx = (s.x - camX) + s.sinA * whiteOffset;
       const by = s.y - s.cosA * whiteOffset;
@@ -251,8 +248,7 @@ function drawCatBody(ctx, parts, camX, isMobile) {
   }
 
   // --- 胴体タイルを描画（間引き） ---
-  // モバイル: パーツ数分だけ描画（save/translate/rotate/drawImageが重いため）
-  const tileCount = isMobile ? parts.length : parts.length * 2;
+  const tileCount = parts.length * 3;
   const step = Math.max(1, Math.floor(samples.length / tileCount));
   for (let i = 0; i < samples.length; i += step) {
     const s = samples[i];
@@ -293,7 +289,7 @@ function drawCatBody(ctx, parts, camX, isMobile) {
       const by0 = s0.y - s0.cosA * whiteBackOffset - s0.sinA * lineExtendPx;
       ctx.moveTo(bx0, by0);
     }
-    for (let i = 0; i < samples.length - 2; i += backStep) {
+    for (let i = 0; i < samples.length - 2; i++) {
       const s = samples[i];
       ctx.lineTo((s.x - camX) + s.sinA * whiteBackOffset,
                  s.y          - s.cosA * whiteBackOffset);
@@ -320,7 +316,7 @@ function drawCatBody(ctx, parts, camX, isMobile) {
       const by0 = s0.y - s0.cosA * backOffset - s0.sinA * lineExtendPx;
       ctx.moveTo(bx0, by0);
     }
-    for (let i = 0; i < samples.length - 2; i += backStep) {
+    for (let i = 0; i < samples.length - 2; i++) {
       const s = samples[i];
       ctx.lineTo((s.x - camX) + s.sinA * backOffset,
                  s.y          - s.cosA * backOffset);
@@ -367,7 +363,7 @@ function drawCatBody(ctx, parts, camX, isMobile) {
  * Draw an obstacle block.
  * Replace to swap in spike/lava/enemy sprites.
  */
-function drawObstacle(ctx, obs, camX, isMobile) {
+function drawObstacle(ctx, obs, camX) {
   const sx = obs.x - camX;
   const { y, w, h } = obs;
   ctx.save();
@@ -380,15 +376,13 @@ function drawObstacle(ctx, obs, camX, isMobile) {
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  if (!isMobile) {
-    // Inner highlight line (PC only)
-    roundRectPath(ctx, sx + 3, y + 3, w - 6, h - 6, 2);
-    ctx.strokeStyle = 'rgba(239,68,68,0.25)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }
+  // Inner highlight line
+  roundRectPath(ctx, sx + 3, y + 3, w - 6, h - 6, 2);
+  ctx.strokeStyle = 'rgba(239,68,68,0.25)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
 
-  // Spikes on top — モバイルでは1パスで全スパイクをバッチ描画
+  // Spikes on top
   ctx.fillStyle = '#ef4444';
   const spikeCount = Math.max(1, Math.floor(w / 14));
   const spikeW = w / spikeCount;
@@ -548,13 +542,11 @@ function drawMountainLayerCached(ctx, camX, layer) {
 }
 
 /** Draw the scrolling sky background. */
-function drawBackground(ctx, camX, isMobile) {
+function drawBackground(ctx, camX) {
   ctx.drawImage(_bgCache, 0, 0);
 
   ensureMtCaches();
-  // モバイルでは山を1層だけ描画（3→1で描画コスト1/3）
-  const layers = isMobile ? [_mtCaches[2]] : _mtCaches;
-  for (const layer of layers) {
+  for (const layer of _mtCaches) {
     drawMountainLayerCached(ctx, camX, layer);
   }
 }
@@ -800,7 +792,6 @@ class Game {
     this.autoPlay = false;
     this.autoAdvanceTimer = 0;
     this.validationResult = null;
-    this._isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     this._lastFrame = 0;
 
     ensureBgCache();
@@ -821,16 +812,8 @@ class Game {
     this.canvas.style.width  = (CANVAS_W * scale) + 'px';
     this.canvas.style.height = (CANVAS_H * scale) + 'px';
 
-    // モバイルでは解像度を半分にして描画負荷を軽減
-    const res = this._isMobile ? 0.5 : 1;
-    this.canvas.width  = CANVAS_W * res;
-    this.canvas.height = CANVAS_H * res;
-
-    if (this._isMobile) {
-      this.ctx.setTransform(res, 0, 0, res, 0, 0);
-    } else {
-      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    }
+    this.canvas.width  = CANVAS_W;
+    this.canvas.height = CANVAS_H;
 
     // 解像度変更でキャッシュが合わなくなるので再生成
     _bgCache = null;
@@ -1069,18 +1052,18 @@ class Game {
   _draw() {
     const ctx = this.ctx;
     // alpha:false + 背景が全面を覆うため clearRect は不要
-    drawBackground(ctx, this.camX, this._isMobile);
+    drawBackground(ctx, this.camX);
     drawGround(ctx);
 
     // Obstacles (画面内のみ描画)
     for (const o of this.obstacles) {
       const sx = o.x - this.camX;
       if (sx + o.w < 0 || sx > CANVAS_W) continue;
-      drawObstacle(ctx, o, this.camX, this._isMobile);
+      drawObstacle(ctx, o, this.camX);
     }
 
     // スプラインベースでねこ全身を描画
-    drawCatBody(ctx, this.parts, this.camX, this._isMobile);
+    drawCatBody(ctx, this.parts, this.camX);
 
     // Progress bar
     const prog = Math.min(this.distance / this.stageLen, 1);
@@ -1174,15 +1157,6 @@ class Game {
     const rawElapsed = now - this._lastFrame;
     this._lastFrame = now;
 
-    // FPS計測
-    this._fpsFrames = (this._fpsFrames || 0) + 1;
-    this._fpsTime = (this._fpsTime || 0) + rawElapsed;
-    if (this._fpsTime >= 1000) {
-      this._fpsDisplay = this._fpsFrames;
-      this._fpsFrames = 0;
-      this._fpsTime = 0;
-    }
-
     // 固定タイムステップ: PCの164Hzに合わせた速度を全デバイスで再現
     // PC(164Hz): 1update/frame = 164updates/sec
     // モバイル(60Hz): ~2.7updates/frame × 60 = ~164updates/sec（キャッチアップ）
@@ -1196,21 +1170,6 @@ class Game {
       this._update();
     }
     this._draw();
-
-    // FPS表示（デバッグ用）
-    if (this._fpsDisplay != null) {
-      const label = `${this._fpsDisplay}fps s${steps}`;
-      this.ctx.save();
-      this.ctx.font = 'bold 16px monospace';
-      const tw = this.ctx.measureText(label).width + 12;
-      this.ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      this.ctx.fillRect(CANVAS_W - tw - 4, CANVAS_H - 26, tw + 4, 24);
-      this.ctx.fillStyle = '#0f0';
-      this.ctx.textAlign = 'right';
-      this.ctx.textBaseline = 'bottom';
-      this.ctx.fillText(label, CANVAS_W - 8, CANVAS_H - 6);
-      this.ctx.restore();
-    }
   }
 }
 
